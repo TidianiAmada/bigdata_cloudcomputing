@@ -1,8 +1,11 @@
 # Introduction au Big Data et au Cloud Computing
 
 **Formation :** Licence Informatique 2 — SupDeCo
+
 **Enseignant :** M. TOP
+
 **Volume horaire :** 20 heures
+
 **Approche pédagogique :** apprentissage par ateliers (*workshop-based learning*)
 
 ---
