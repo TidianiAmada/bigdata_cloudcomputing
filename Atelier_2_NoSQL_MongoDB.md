@@ -1,4 +1,4 @@
-# Atelier 2 — NoSQL avec MongoDB
+# Atelier 2 — Les bases de données NoSQL : concepts et mise en œuvre avec MongoDB
 
 **Module :** Introduction au Big Data et au Cloud Computing
 **Formation :** Licence Informatique 2 — SupDeCo
@@ -7,18 +7,26 @@
 
 ---
 
+Les limites des systèmes relationnels mises en évidence dans l'atelier précédent ont conduit à l'émergence de nouvelles familles de bases de données regroupées sous l'appellation NoSQL. Cet atelier présente les principaux modèles NoSQL avant d'introduire MongoDB, une base orientée documents largement utilisée dans les architectures Big Data modernes.
+
+---
+
 ## Objectifs de l'atelier
 
-- comprendre le principe des bases de données NoSQL et en quoi elles répondent aux limites vues à l'Atelier 1 ;
-- distinguer les quatre grandes familles de modèles NoSQL ;
-- lancer et manipuler une base MongoDB dans un environnement conteneurisé (Docker) ;
-- importer un jeu de données JSON réel et effectuer des requêtes de filtrage, de projection et d'agrégation.
+- expliquer les principes fondamentaux des bases de données NoSQL et en quoi elles répondent aux limites vues à l'Atelier 1 ;
+- distinguer les principales familles de modèles NoSQL et leurs domaines d'application ;
+- mettre en œuvre une base MongoDB dans un environnement conteneurisé (Docker) ;
+- interroger une base MongoDB à l'aide des opérations de filtrage, de projection et d'agrégation sur un jeu de données JSON réel.
 
 ---
 
 ## 1. Rappel théorique (20–30 min)
 
-### 1.1 Pourquoi NoSQL ?
+### 1.1 Fondements des bases de données NoSQL
+
+> **Définition**
+>
+> Les bases de données NoSQL constituent une famille de systèmes de gestion de données conçus pour répondre aux besoins de scalabilité, de flexibilité de schéma et de disponibilité rencontrés dans les applications manipulant de grands volumes de données distribuées.
 
 NoSQL signifie *Not Only SQL*. Ces bases de données ne remplacent pas le relationnel : elles proposent des modèles alternatifs, plus flexibles, conçus pour :
 
@@ -26,7 +34,17 @@ NoSQL signifie *Not Only SQL*. Ces bases de données ne remplacent pas le relati
 - se répartir naturellement sur plusieurs machines (scalabilité horizontale) ;
 - privilégier la disponibilité et la rapidité, quitte à assouplir certaines garanties de cohérence strictes (théorème CAP).
 
-### 1.2 Le théorème CAP (notion clé)
+### 1.2 SQL et NoSQL : tableau comparatif
+
+| Critère | SQL | NoSQL |
+|---|---|---|
+| Structure | Schéma fixe | Schéma flexible |
+| Scalabilité | Verticale (machine plus puissante) | Horizontale (ajout de nœuds) |
+| Cohérence | ACID | BASE (selon les systèmes) |
+| Jointures | Oui, natives | Généralement limitées ou absentes |
+| Cas d'usage | Applications transactionnelles | Applications distribuées et Big Data |
+
+### 1.3 Le théorème CAP
 
 Dans un système distribué, on ne peut garantir simultanément que deux des trois propriétés suivantes :
 
@@ -36,7 +54,11 @@ Dans un système distribué, on ne peut garantir simultanément que deux des tro
 
 Les bases NoSQL font des choix de compromis différents selon leur conception (souvent AP ou CP), alors qu'un SGBDR classique privilégie fortement CA sur une seule machine.
 
-### 1.3 Les quatre grandes familles de modèles NoSQL
+> **Remarque**
+>
+> Le théorème CAP ne s'applique qu'aux systèmes distribués confrontés à une partition réseau. En l'absence de partition, un système peut simultanément assurer cohérence et disponibilité.
+
+### 1.4 Les quatre grandes familles de modèles NoSQL
 
 | Modèle | Unité de stockage | Exemple de SGBD | Cas d'usage typique |
 |---|---|---|---|
@@ -45,13 +67,19 @@ Les bases NoSQL font des choix de compromis différents selon leur conception (s
 | **Orienté colonnes** | Familles de colonnes stockées ensemble | Cassandra, HBase | Séries temporelles, très gros volumes en écriture |
 | **Orienté graphes** | Nœuds et relations | Neo4j | Réseaux sociaux, recommandations, détection de fraude |
 
-### 1.4 Pourquoi MongoDB en atelier
+Aucun de ces modèles n'est supérieur aux autres de manière absolue. Chacun répond à une catégorie particulière de problèmes.
+
+### 1.5 Choix de MongoDB comme support pédagogique
 
 MongoDB est une base orientée **documents** : chaque enregistrement est un document au format BSON (proche de JSON), regroupé dans des **collections** (équivalent souple d'une table). Elle est représentative des bases NoSQL les plus utilisées en entreprise et illustre bien :
 
 - l'absence de schéma fixe (deux documents d'une même collection peuvent avoir des champs différents) ;
 - la possibilité d'imbriquer des structures complexes (sous-documents, tableaux) sans jointure — un pays peut embarquer directement son tableau de devises ou de langues, là où le relationnel exigerait des tables séparées reliées par des clés étrangères ;
 - une syntaxe de requête proche de JSON, facile à prendre en main.
+
+> **Remarque**
+>
+> L'absence de schéma ne signifie pas l'absence de structure. Dans les applications réelles, les documents MongoDB suivent généralement un modèle de données défini par les développeurs.
 
 Correspondance de vocabulaire SQL ↔ MongoDB :
 
@@ -63,9 +91,28 @@ Correspondance de vocabulaire SQL ↔ MongoDB :
 | Colonne | Champ (*field*) |
 | Clé primaire | `_id` |
 
-### 1.5 Commandes et opérateurs MongoDB essentiels
+### 1.6 Le format BSON
 
-Ces commandes couvrent l'essentiel de ce dont un étudiant a besoin pour suivre l'atelier — de la mise en route du serveur jusqu'à l'interrogation des données, dans `mongosh`.
+Bien que les documents soient manipulés sous forme JSON, MongoDB les stocke en réalité au format **BSON** (*Binary JSON*), une représentation binaire optimisée permettant notamment la gestion de types supplémentaires (`Date`, `ObjectId`, données binaires, etc.) et un accès plus rapide aux champs.
+
+### 1.7 Principes de modélisation dans MongoDB
+
+Concevoir une base documentaire ne se limite pas à savoir l'interroger : il faut aussi choisir comment structurer les documents. Deux approches principales s'opposent :
+
+- **L'imbrication (*embedding*)** : les données liées sont stockées directement dans le document parent (par exemple les devises et langues d'un pays, comme dans `countries.json`). Cette approche favorise la lecture en une seule requête mais duplique l'information et peut alourdir les documents.
+- **La référence (*referencing*)** : les données liées sont stockées dans une collection séparée et reliées par un identifiant (à la manière d'une clé étrangère). Cette approche évite la duplication mais nécessite des requêtes supplémentaires (ou l'opérateur `$lookup`) pour reconstituer l'information.
+
+Le choix entre ces deux approches dépend principalement :
+
+- de la fréquence de lecture conjointe des données (l'imbrication favorise les lectures groupées) ;
+- de la fréquence de mise à jour des données liées (la référence évite de propager un changement dans de nombreux documents) ;
+- du volume des données imbriquées (un tableau qui peut croître indéfiniment est un mauvais candidat à l'imbrication).
+
+Dans le jeu de données `countries.json` utilisé dans cet atelier, les devises et langues sont imbriquées car elles sont peu nombreuses, rarement modifiées et systématiquement lues avec le pays.
+
+### 1.8 Référence rapide des commandes MongoDB
+
+Les commandes suivantes constituent un socle minimal pour la manipulation de MongoDB, de la mise en route du serveur jusqu'à l'interrogation des données, dans `mongosh`.
 
 **Mise en route (ligne de commande, hors `mongosh`) :**
 
@@ -135,7 +182,7 @@ docker ps
 docker exec -it mongodb mongosh
 ```
 
-### 2.2 Le jeu de données de l'atelier : `countries.json`
+### 2.2 Présentation du jeu de données utilisé : `countries.json`
 
 Le jeu de données utilisé dans cet atelier est **`countries.json`**, un fichier contenant les fiches descriptives de 250 pays du monde (nom, capitale, région, population, devises, langues, codes, etc.). Chaque pays est un document JSON assez riche, avec des champs imbriqués (tableaux d'objets pour les devises et les langues) — un bon exemple de ce que le modèle documents de MongoDB sait représenter nativement, sans avoir besoin de plusieurs tables reliées par des jointures.
 
@@ -220,6 +267,18 @@ db.countries.find(
 db.countries.distinct("name", { region: "Africa" })
 ```
 
+- premier argument : critère de sélection (le filtre) ;
+- second argument : projection des champs à retourner ;
+- `_id: 0` masque l'identifiant généré automatiquement (`1` inclut un champ, `0` l'exclut).
+
+Équivalent SQL de la requête `find` ci-dessus :
+
+```sql
+SELECT name
+FROM countries
+WHERE region = 'Africa';
+```
+
 ### 3.5 Les pays d'Afrique dont la monnaie est le Franc CFA (Ouest ou Centre Africain)
 
 Le champ `currencies` est un tableau d'objets (`{ code, name, symbol }`) : on peut filtrer directement sur un champ imbriqué de ce tableau, sans jointure.
@@ -276,12 +335,38 @@ db.countries.aggregate([
 ])
 ```
 
+- `$group` : chaque étage reçoit les documents de l'étage précédent ; ici on regroupe par `region` (`_id: "$region"`) et on calcule un total par groupe avec `$sum` ;
+- `$sort` : trie les groupes obtenus par population totale décroissante (`-1`).
+
+Équivalent SQL de cette agrégation :
+
+```sql
+SELECT region, SUM(population) AS totalPopulation
+FROM countries
+GROUP BY region
+ORDER BY totalPopulation DESC;
+```
+
 ### Consignes
 
 1. Importer `countries.json` dans `geodb.countries` et vérifier le nombre de documents (250).
 2. Exécuter les dix requêtes ci-dessus et noter les résultats.
 3. Pour la requête 3.5, identifier dans les résultats quels pays utilisent chaque variante du Franc CFA (Ouest vs Centre Africain).
 4. Modifier la requête 3.8 pour l'appliquer à une autre région (par exemple « Europe ») et comparer les résultats.
+5. **Requête libre** : proposer, en groupe, une nouvelle requête répondant à une question métier de votre choix, par exemple :
+   - Quels pays utilisent l'euro ?
+   - Quels pays comptent plus de 100 millions d'habitants ?
+   - Quelle région possède le plus grand nombre de pays ?
+   - Quels pays possèdent plusieurs langues officielles ?
+
+---
+
+## Erreurs fréquentes
+
+- oublier `_id: 0` dans la projection, qui fait alors apparaître l'identifiant généré automatiquement ;
+- confondre `find()` (plusieurs documents) et `findOne()` (un seul document) ;
+- oublier que `aggregate()` attend un tableau d'étages (`[ ... ]`), même s'il n'y en a qu'un seul ;
+- utiliser `$sum` (ou un autre opérateur d'agrégat) en dehors d'un `$group`.
 
 ---
 
@@ -293,6 +378,30 @@ db.countries.aggregate([
 - Le théorème CAP explique pourquoi les bases distribuées doivent arbitrer entre cohérence stricte et disponibilité.
 - Le lancement de MongoDB via Docker préfigure l'approche utilisée pour l'ensemble des composants du module (Atelier 3).
 
+### Synthèse visuelle
+
+```
+Relationnel
+      │
+      ▼
+Limites du SQL
+      │
+      ▼
+NoSQL
+      │
+      ▼
+4 familles (clé-valeur, documents, colonnes, graphes)
+      │
+      ▼
+MongoDB
+      │
+      ▼
+Documents BSON (embedding / referencing)
+      │
+      ▼
+find() · distinct() · aggregate()
+```
+
 ---
 
 ## Pour aller plus loin
@@ -300,3 +409,13 @@ db.countries.aggregate([
 - Comparer MongoDB avec une base orientée colonnes (Cassandra) sur un même cas d'usage.
 - Explorer les index MongoDB (`createIndex`) pour optimiser les requêtes sur `region` ou `population`.
 - Réécrire la requête 3.10 avec `$avg` au lieu de `$sum` pour obtenir la population moyenne par région.
+- Réfléchir à la modélisation d'un cas où la référence (*referencing*) serait préférable à l'imbrication (par exemple une collection `countries` référençant une collection `organisations_internationales`).
+
+---
+
+## Bibliographie
+
+- Kleppmann, M. (2017). *Designing Data-Intensive Applications*. O'Reilly.
+- Chodorow, K. (2019). *MongoDB: The Definitive Guide*. O'Reilly.
+- Brewer, E. (2012). *CAP Twelve Years Later: How the Rules Have Changed*. *Computer*, 45(2), 23–29.
+- MongoDB, Inc. *MongoDB Manual*. https://www.mongodb.com/docs/manual/

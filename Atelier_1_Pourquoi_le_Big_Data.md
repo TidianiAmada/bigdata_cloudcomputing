@@ -1,4 +1,4 @@
-# Atelier 1 — Pourquoi le Big Data ?
+# Atelier 1 — Fondements du Big Data
 
 **Module :** Introduction au Big Data et au Cloud Computing
 **Formation :** Licence Informatique 2 — SupDeCo
@@ -11,10 +11,18 @@
 
 À l'issue de cet atelier, l'étudiant sera capable de :
 
-- expliquer pourquoi le volume et la diversité des données ont explosé depuis les années 2000 ;
-- identifier les limites concrètes des bases de données relationnelles face aux données massives ;
-- définir et illustrer les 5V du Big Data ;
-- comprendre le principe général d'une architecture distribuée.
+- expliquer les facteurs ayant conduit à l'émergence du Big Data ;
+- identifier les limites des SGBDR face aux données massives ;
+- définir et caractériser les cinq dimensions du Big Data ;
+- décrire le principe d'une architecture distribuée.
+
+---
+
+> **Définition**
+>
+> Le Big Data désigne un ensemble de méthodes, d'architectures et de technologies permettant de stocker, traiter et analyser des volumes de données dont les caractéristiques dépassent les capacités des systèmes d'information traditionnels.
+
+Depuis le début des années 2000, la quantité de données produites par les individus, les entreprises et les objets connectés connaît une croissance exponentielle. Cette évolution a profondément modifié les méthodes de stockage, de traitement et d'analyse des données, conduisant à l'émergence du paradigme Big Data. Ce premier atelier présente les motivations techniques ayant conduit à cette évolution et introduit les principaux concepts qui seront développés tout au long du module.
 
 ---
 
@@ -24,13 +32,13 @@
 
 Jusqu'aux années 1990, l'essentiel des données produites par une organisation provenait de ses propres systèmes internes : gestion commerciale, comptabilité, ressources humaines. Ces données étaient structurées, de volume modéré, et géraient sans difficulté par des bases de données relationnelles installées sur un unique serveur.
 
-Trois évolutions majeures ont bouleversé cette situation :
+Trois transformations technologiques majeures ont bouleversé cette situation :
 
 1. **La démocratisation d'Internet** : chaque page consultée, chaque clic, chaque recherche génère une trace numérique.
 2. **L'essor des réseaux sociaux et du mobile** : les utilisateurs deviennent eux-mêmes producteurs de contenu (photos, vidéos, messages, géolocalisation).
 3. **La multiplication des capteurs et objets connectés (IoT)** : véhicules, montres, machines industrielles produisent en continu des flux de données.
 
-Résultat : les organisations ne traitent plus seulement des données qu'elles ont elles-mêmes saisies, mais des volumes considérables de données générées en continu, par des sources multiples, à des formats variés.
+Il en résulte que les organisations ne traitent plus seulement des données qu'elles ont elles-mêmes saisies, mais des volumes considérables de données générées en continu, par des sources multiples, à des formats variés.
 
 ### 1.2 Les limites des bases de données relationnelles
 
@@ -45,9 +53,13 @@ Les systèmes de gestion de bases de données relationnelles (SGBDR — MySQL, P
 
 La question n'est donc pas « le relationnel est-il dépassé ? » (il ne l'est pas, il reste la norme pour la majorité des applications de gestion), mais « à partir de quel volume, de quelle vitesse ou de quelle variété de données un autre modèle devient-il nécessaire ? ».
 
+> **Remarque**
+>
+> Les systèmes relationnels ne sont pas remplacés par les technologies Big Data. Dans la pratique, les deux approches coexistent et répondent à des besoins complémentaires.
+
 ### 1.3 Les 5V du Big Data
 
-Le Big Data se caractérise généralement par cinq dimensions :
+Le Big Data se caractérise généralement par cinq dimensions. Les trois premières (Volume, Vélocité et Variété) ont été proposées par Doug Laney en 2001 ; les dimensions Véracité et Valeur ont été introduites ultérieurement afin de mieux caractériser les problématiques modernes liées aux données massives.
 
 - **Volume** : la quantité de données produites (téraoctets, pétaoctets, voire plus), qui dépasse la capacité de traitement d'un système classique.
 - **Vélocité** : la vitesse à laquelle les données sont générées et doivent être traitées (flux en temps réel, capteurs, transactions financières).
@@ -57,7 +69,14 @@ Le Big Data se caractérise généralement par cinq dimensions :
 
 ### 1.4 Introduction aux architectures distribuées
 
-Face à ces limites, l'approche du Big Data consiste à changer de paradigme : au lieu de renforcer une seule machine (*scale-up*), on répartit les données et les traitements sur **plusieurs machines** qui travaillent ensemble (*scale-out*, ou **scalabilité horizontale**).
+Afin de répondre à ces limitations, l'approche du Big Data consiste à changer de paradigme : au lieu de renforcer une seule machine (*scale-up*), on répartit les données et les traitements sur **plusieurs machines** qui travaillent ensemble (*scale-out*, ou **scalabilité horizontale**).
+
+| | Scale-up (verticale) | Scale-out (horizontale) |
+|---|---|---|
+| **Principe** | Ajouter des ressources (RAM, CPU) à une machine unique | Ajouter des machines supplémentaires au groupe |
+| **Plafond** | Limité par les capacités physiques d'un seul serveur | Extensible en théorie sans limite |
+| **Coût** | Machines haut de gamme, coût croissant de façon non linéaire | Machines standards, coût généralement plus maîtrisé |
+| **Tolérance aux pannes** | Point unique de défaillance | Perte d'un nœud tolérée si les données sont répliquées |
 
 Principe général d'une architecture distribuée :
 
@@ -81,9 +100,9 @@ Chaque nœud stocke une partie des données et exécute une partie du traitement
 - une meilleure tolérance aux pannes (la perte d'un nœud n'interrompt pas le service si les données sont répliquées) ;
 - un coût généralement plus maîtrisé (machines standards plutôt qu'un serveur surdimensionné).
 
-C'est ce principe qui sous-tend l'ensemble des technologies étudiées dans ce module : NoSQL, Spark, Hadoop, et le Cloud Computing lui-même.
+C'est ce principe qui sous-tend l'ensemble des technologies étudiées dans ce module : NoSQL, Spark, Hadoop, et le Cloud Computing lui-même. Cette approche constitue le fondement des infrastructures modernes telles que Hadoop, Spark, Cassandra ou encore les plateformes de Cloud Computing.
 
-### 1.5 Analyse de données : quatre niveaux de valeur ajoutée
+### 1.5 Les niveaux d'analytique décisionnelle
 
 Traiter un gros volume de données n'a de sens que si l'on en tire une information exploitable (la dimension **Valeur** des 5V). On distingue classiquement quatre types d'analytique, du plus simple au plus complexe :
 
@@ -98,7 +117,7 @@ Ce module se concentre essentiellement sur l'analytique **descriptive** (agréga
 
 ### 1.6 Le pipeline Big Data et les rôles associés
 
-Toute plateforme Big Data s'organise autour d'un même enchaînement de quatre étapes :
+Une architecture Big Data s'organise généralement selon les étapes suivantes :
 
 ```text
 Sources de données → Ingestion → Stockage / Traitement → Analyse et visualisation → Décision
@@ -116,12 +135,13 @@ Trois profils métiers interviennent typiquement le long de ce pipeline :
 | **Data Engineer** | Construit et maintient l'infrastructure : collecte, stockage, intégration, prétraitement des données. |
 | **Data Analyst** | Manipule les données déjà préparées, produit des analyses statistiques et des rapports. |
 | **Data Scientist** | Développe des modèles prédictifs avancés (apprentissage automatique, IA). |
+| **Machine Learning Engineer** | Industrialise et déploie en production les modèles conçus par le Data Scientist. |
 
 Ce module place l'étudiant successivement du côté Data Engineer (construction de la plateforme : Docker, Spark, EMR) et Data Analyst (requêtes et agrégations sur les données).
 
-### 1.7 Commandes shell à connaître pour explorer un gros fichier
+### 1.7 Exploration d'un jeu de données volumineux sous Linux
 
-Avant même d'introduire un outil Big Data, quelques commandes shell standards permettent déjà de caractériser un jeu de données trop volumineux pour un tableur — ce sont elles que l'on utilise dans l'atelier pratique ci-dessous.
+Préalablement à l'introduction d'un outil Big Data, quelques commandes shell standards permettent déjà de caractériser un jeu de données trop volumineux pour un tableur — ce sont elles que l'on utilise dans l'atelier pratique ci-dessous.
 
 | Commande | Rôle | Exemple |
 |---|---|---|
@@ -135,7 +155,7 @@ Avant même d'introduire un outil Big Data, quelques commandes shell standards p
 | `sort` / `uniq -d` | Détecter les lignes strictement dupliquées | `sort purchases.txt \| uniq -d \| wc -l` |
 | `awk -F'\t' '{print $N}' \| sort -u` | Lister les valeurs distinctes d'une colonne `N` | `awk -F'\t' '{print $6}' purchases.txt \| sort -u` |
 
-**Pourquoi ces commandes et pas un tableur ?** Elles ne chargent jamais l'intégralité du fichier en mémoire d'un coup : `wc`, `awk`, `sort` traitent le flux ligne par ligne (ou en passes optimisées pour `sort`), ce qui leur permet de rester utilisables sur des fichiers de plusieurs centaines de Mo, là où un tableur charge tout en RAM avant même d'afficher quoi que ce soit. C'est un premier avant-goût, à très petite échelle, du principe qui sera généralisé avec les architectures distribuées (§1.4) : traiter la donnée par blocs plutôt que de tout charger en un bloc unique.
+**Justification du recours aux outils Unix.** Elles ne chargent jamais l'intégralité du fichier en mémoire d'un coup : `wc`, `awk`, `sort` traitent le flux ligne par ligne (ou en passes optimisées pour `sort`), ce qui leur permet de rester utilisables sur des fichiers de plusieurs centaines de Mo, là où un tableur charge tout en RAM avant même d'afficher quoi que ce soit. C'est un premier avant-goût, à très petite échelle, du principe qui sera généralisé avec les architectures distribuées (§1.4) : traiter la donnée par blocs plutôt que de tout charger en un bloc unique.
 
 ---
 
@@ -162,6 +182,14 @@ Chaque ligne du fichier (valeurs séparées par des tabulations) représente un 
 | `product` | chaîne | Men's T-Shirt |
 | `cost` | flottant | 16.98 |
 | `payment` | chaîne | MasterCard / Visa / Amex / Discover / Cash |
+
+### Questions de réflexion
+
+Avant de commencer les manipulations, répondre aux questions suivantes :
+
+- Pourquoi un tableur devient-il inadapté à certains volumes de données ?
+- Dans quelles situations un SGBDR reste-t-il préférable ?
+- Quels types de données produisez-vous quotidiennement avec votre téléphone ?
 
 ### Déroulé
 
@@ -208,8 +236,42 @@ Ce constat sert de fil conducteur à l'ensemble du module : NoSQL (Atelier 2) pu
 
 ---
 
+## À retenir
+
+À l'issue de cet atelier, les notions suivantes doivent être maîtrisées :
+
+- Big Data
+- 5V
+- Scale-up
+- Scale-out
+- Architecture distribuée
+- Pipeline Big Data
+- Data Engineer
+- Data Analyst
+
+---
+
+## Questions de révision
+
+1. Pourquoi les SGBDR atteignent-ils leurs limites face aux données massives ?
+2. Expliquez la différence entre scalabilité verticale et horizontale.
+3. Les technologies Big Data remplacent-elles les bases relationnelles ? Justifiez.
+4. Décrivez les cinq dimensions du Big Data.
+5. Quel est le rôle d'une architecture distribuée ?
+6. Pourquoi la notion de Valeur est-elle considérée comme la finalité du Big Data ?
+
+---
+
 ## Pour aller plus loin
 
 - Gartner, définition originelle des 3V (Doug Laney, 2001), étendue depuis aux 5V.
 - Comparer les architectures *scale-up* vs *scale-out*.
 - Explorer les outils d'ingestion Big Data usuels (Kafka, Flume, Sqoop, NiFi) et leurs équivalents managés sur AWS (Kinesis, DMS, DataSync).
+
+### Bibliographie
+
+- Dean, J., & Ghemawat, S. (2008). *MapReduce: Simplified Data Processing on Large Clusters*. Communications of the ACM.
+- White, T. (2021). *Hadoop: The Definitive Guide*. O'Reilly.
+- Karau, H., & Warren, R. (2023). *High Performance Spark*. O'Reilly.
+- Laney, D. (2001). *3D Data Management: Controlling Data Volume, Velocity and Variety*. META Group.
+- AWS. *Well-Architected Framework*.
