@@ -63,6 +63,53 @@ Correspondance de vocabulaire SQL ↔ MongoDB :
 | Colonne | Champ (*field*) |
 | Clé primaire | `_id` |
 
+### 1.5 Commandes et opérateurs MongoDB essentiels
+
+Ces commandes couvrent l'essentiel de ce dont un étudiant a besoin pour suivre l'atelier — de la mise en route du serveur jusqu'à l'interrogation des données, dans `mongosh`.
+
+**Mise en route (ligne de commande, hors `mongosh`) :**
+
+| Commande | Rôle |
+|---|---|
+| `docker run -d --name mongodb -p 27017:27017 mongo:latest` | Démarrer un serveur MongoDB dans un conteneur |
+| `docker exec -it mongodb mongosh` | Ouvrir un shell `mongosh` interactif dans le conteneur |
+| `mongoimport --db <db> --collection <coll> --jsonArray --file <fichier>.json` | Importer un fichier JSON (tableau d'objets) dans une collection |
+
+**Navigation (dans `mongosh`) :**
+
+| Commande | Rôle |
+|---|---|
+| `show dbs` | Lister les bases de données existantes |
+| `use <db>` | Basculer sur une base (la crée si elle n'existe pas encore) |
+| `show collections` | Lister les collections de la base courante |
+
+**Lecture et filtrage :**
+
+| Commande | Rôle |
+|---|---|
+| `db.coll.countDocuments(<filtre>)` | Compter les documents (avec filtre optionnel) |
+| `db.coll.distinct("champ", <filtre>)` | Lister les valeurs uniques d'un champ |
+| `db.coll.findOne(<filtre>, <projection>)` | Récupérer un seul document |
+| `db.coll.find(<filtre>, <projection>)` | Récupérer plusieurs documents |
+
+Opérateurs de filtre courants : `$eq` (implicite), `$lt` / `$lte` / `$gt` / `$gte` (comparaison), `$in` (appartenance à une liste), et la notation pointée (`"currencies.name"`) pour filtrer sur un champ imbriqué dans un tableau.
+
+**Agrégation (`db.coll.aggregate([ ... ])`)**, un pipeline d'étages enchaînés :
+
+| Étage | Rôle | Équivalent SQL |
+|---|---|---|
+| `$match` | Filtrer les documents | `WHERE` |
+| `$group` | Regrouper par valeur de `_id` et calculer des agrégats | `GROUP BY` |
+| `$sum` / `$avg` / `$min` / `$max` | Fonctions d'agrégat utilisées dans `$group` | `SUM`/`AVG`/`MIN`/`MAX` |
+| `$sort` | Trier les résultats (`1` croissant, `-1` décroissant) | `ORDER BY` |
+
+**Écriture (pour aller plus loin) :**
+
+| Commande | Rôle |
+|---|---|
+| `db.coll.insertOne(<document>)` | Insérer un document |
+| `db.coll.createIndex({champ: 1})` | Créer un index pour accélérer les requêtes sur ce champ |
+
 ---
 
 ## 2. Démonstration guidée (20 min)

@@ -57,6 +57,21 @@ Apache Hive a été conçu pour permettre d'interroger de grands volumes de donn
 
 **Point clé du cours** : dans les architectures Big Data actuelles, Spark est devenu le moteur de calcul principal, tandis que Hive (et son metastore) reste utile comme **catalogue de métadonnées** partagé entre plusieurs outils, plutôt que comme moteur d'exécution. C'est cette articulation qui sera retrouvée sur Amazon EMR à l'Atelier 7.
 
+### 1.5 Commandes Spark SQL à connaître
+
+À la différence de Hive (aide-mémoire `beeline`/`hive` au §2.8), Spark SQL ne nécessite aucune connexion réseau ni serveur séparé : les requêtes SQL s'exécutent directement dans la session Spark déjà ouverte (`pyspark` ou un script `spark-submit`).
+
+| Commande | Rôle |
+|---|---|
+| `df.createOrReplaceTempView("nom_table")` | Enregistrer un DataFrame sous un nom de table utilisable en SQL, le temps de la session |
+| `spark.sql("SELECT ...")` | Exécuter une requête SQL et récupérer le résultat sous forme de DataFrame |
+| `spark.sql("...").show(n)` | Exécuter la requête et afficher les `n` premières lignes |
+| `spark.catalog.listTables()` | Lister les vues/tables enregistrées dans la session courante |
+
+Clauses SQL mobilisées dans cet atelier : `GROUP BY`, `ORDER BY`, `CASE WHEN ... THEN ... ELSE ... END` (équivalent SQL du `when().otherwise()` vu en DataFrame à l'Atelier 4), sous-requête scalaire (`(SELECT COUNT(*) FROM ...)`), et `PIVOT` (transformer des valeurs de ligne en colonnes — ici, une valeur par mode de paiement).
+
+**Point clé à retenir** : `spark.sql("...")` renvoie un DataFrame comme un autre — rien n'empêche d'enchaîner ensuite des méthodes DataFrame (`.filter()`, `.orderBy()`...) sur le résultat d'une requête SQL, les deux API étant interchangeables à tout moment de la chaîne de traitement.
+
 ---
 
 ## 2. Partie 1 — Hive sur `purchases.txt`

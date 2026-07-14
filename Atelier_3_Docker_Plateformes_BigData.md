@@ -81,10 +81,28 @@ docker network ls
 
 # Docker Compose
 docker compose up -d              # démarrer tous les services définis
-docker compose down               # arrêter et supprimer les services
+docker compose up -d <service>    # (re)démarrer un seul service, sans toucher aux autres
+docker compose down               # arrêter et supprimer les services (garde les volumes nommés)
+docker compose down -v            # arrêter et supprimer aussi les volumes nommés
 docker compose logs -f            # suivre les journaux de tous les services
+docker compose logs -f <service>  # suivre les journaux d'un seul service
 docker compose ps                 # état des services
 ```
+
+### 2.1 Commandes de diagnostic (à connaître pour déboguer une plateforme)
+
+Au-delà des commandes de base, quelques commandes de diagnostic sont indispensables dès qu'un service ne démarre pas ou ne se connecte pas correctement :
+
+| Commande | Rôle | Exemple d'usage |
+|---|---|---|
+| `docker logs <conteneur>` | Lire les journaux d'un conteneur (souvent la première chose à faire quand un conteneur redémarre en boucle ou plante) | `docker logs spark-worker` |
+| `docker exec <conteneur> getent hosts <service>` | Vérifier que la résolution DNS interne à Docker Compose fonctionne entre deux services | `docker exec spark-worker getent hosts spark-master` |
+| `docker exec <conteneur> <cmd> --eval "..."` | Exécuter une commande ponctuelle non interactive dans un conteneur (utile pour scripter des vérifications) | `docker exec mongodb mongosh --eval "db.runCommand({ping:1})"` |
+| `docker volume ls --filter name=<motif>` | Retrouver un volume nommé précis parmi tous les volumes de la machine | `docker volume ls --filter name=mongo_data` |
+| `docker rm -f <conteneur>` | Forcer la suppression d'un conteneur (même s'il tourne encore), pour tester la persistance d'un volume par exemple | `docker rm -f mongodb` |
+| `curl http://localhost:8080/json/` | Interroger l'API REST exposée par le master Spark (mêmes informations que l'interface web, mais scriptable) | vérifier le nombre de workers actifs (`aliveworkers`) |
+
+**Piège fréquent à connaître** : certaines images ne sont pas conçues pour tourner en root ou en mode standalone (c'est le cas d'`apache/spark-py`, utilisée plus loin dans cet atelier faute de disponibilité de `bitnami/spark`). Un conteneur qui redémarre en boucle sans message d'erreur explicite en façade doit systématiquement être diagnostiqué avec `docker logs`, qui affichera par exemple une `AccessDeniedException` si le processus n'a pas le droit d'écrire dans le répertoire de travail par défaut.
 
 ---
 

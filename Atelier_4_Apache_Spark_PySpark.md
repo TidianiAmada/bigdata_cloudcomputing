@@ -78,6 +78,46 @@ Le DataFrame est une abstraction de plus haut niveau : une collection de donnée
 
 Dans cet atelier, les deux API sont mises en œuvre sur le **même jeu de données et les mêmes questions**, afin d'observer concrètement cet écart de niveau d'abstraction.
 
+### 1.6 Commandes et API à connaître
+
+**Lancement (ligne de commande) :**
+
+| Commande | Rôle |
+|---|---|
+| `pyspark` | Ouvrir un shell interactif Python avec Spark déjà initialisé (variables `sc` et `spark` disponibles) |
+| `spark-submit <script.py>` | Exécuter un script Spark de façon non interactive (le mode utilisé en production, et pour chronométrer un traitement) |
+| `spark-submit --master local[*] <script.py>` | Idem, en forçant l'exécution locale en utilisant tous les cœurs disponibles (`*`) |
+
+**API RDD (bas niveau, clé-valeur) :**
+
+| Méthode | Rôle |
+|---|---|
+| `sc.textFile("chemin")` | Charger un fichier texte en RDD (une ligne = un élément) |
+| `sc.parallelize([...])` | Créer un RDD à partir d'une collection Python en mémoire |
+| `.map(fonction)` | Transformer chaque élément (1 entrée → 1 sortie) |
+| `.filter(fonction)` | Ne garder que les éléments vérifiant une condition |
+| `.reduceByKey(fonction)` | Agréger les valeurs par clé (équivalent d'un `GROUP BY` + agrégat) |
+| `.sortBy(fonction)` / `.sortByKey()` | Trier un RDD selon une fonction, ou selon sa clé |
+| `.collect()` | Rapatrier tous les résultats vers le driver (⚠️ à éviter sur un très gros RDD non agrégé) |
+| `.take(n)` | Rapatrier seulement les `n` premiers éléments — alternative sûre à `.collect()` |
+| `.count()` | Compter les éléments du RDD |
+| `.cache()` | Garder le RDD en mémoire entre plusieurs actions, pour éviter de relire/reparser les données à chaque fois |
+
+**API DataFrame (haut niveau, proche SQL) :**
+
+| Méthode | Rôle |
+|---|---|
+| `spark.read.csv("chemin", sep="\t", schema="...")` | Charger un fichier délimité dans un DataFrame, avec un schéma explicite |
+| `.printSchema()` | Afficher les colonnes et leurs types |
+| `.show(n)` | Afficher les `n` premières lignes sous forme de tableau |
+| `.groupBy("colonne")` | Regrouper par valeur de colonne |
+| `.agg(_sum("colonne"), ...)` | Calculer un ou plusieurs agrégats (`sum`, `avg`, `count`, `min`, `max`) sur les groupes |
+| `.orderBy(col("colonne").desc())` | Trier (`.desc()` pour un tri décroissant) |
+| `.withColumn("nouvelle_colonne", expression)` | Ajouter une colonne calculée (ex. `substring`, `when(...).otherwise(...)`) |
+| `.filter(condition)` / `.where(condition)` | Filtrer les lignes |
+
+**Point clé à retenir** : `.collect()` et `.take(n)` sont les seules opérations qui rapatrient réellement des données vers le driver — toutes les autres (`.map`, `.filter`, `.groupBy`, `.agg`...) ne font que décrire des transformations, évaluées **paresseusement** (*lazy evaluation*) et exécutées uniquement au moment où une action (`.collect()`, `.count()`, `.show()`...) est appelée.
+
 ---
 
 ## 2. Le jeu de données : `purchases.txt`

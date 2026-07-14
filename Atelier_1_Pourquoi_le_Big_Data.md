@@ -119,6 +119,24 @@ Trois profils métiers interviennent typiquement le long de ce pipeline :
 
 Ce module place l'étudiant successivement du côté Data Engineer (construction de la plateforme : Docker, Spark, EMR) et Data Analyst (requêtes et agrégations sur les données).
 
+### 1.7 Commandes shell à connaître pour explorer un gros fichier
+
+Avant même d'introduire un outil Big Data, quelques commandes shell standards permettent déjà de caractériser un jeu de données trop volumineux pour un tableur — ce sont elles que l'on utilise dans l'atelier pratique ci-dessous.
+
+| Commande | Rôle | Exemple |
+|---|---|---|
+| `wget <url>` | Télécharger un fichier depuis une URL | `wget https://.../purchases.txt.gz` |
+| `gunzip <fichier>.gz` | Décompresser une archive gzip | `gunzip purchases.txt.gz` |
+| `ls -l <fichier>` | Afficher la taille et les métadonnées d'un fichier | `ls -l purchases.txt` |
+| `du -h <fichier>` | Afficher la taille d'un fichier en format lisible (Ko/Mo/Go) | `du -h purchases.txt` |
+| `wc -l <fichier>` | Compter le nombre de lignes | `wc -l purchases.txt` |
+| `head -n <fichier>` | Afficher les premières lignes | `head -5 purchases.txt` |
+| `awk -F'\t' '{print NF}'` | Compter le nombre de champs par ligne (homogénéité du format) | `awk -F'\t' '{print NF}' purchases.txt \| sort -u` |
+| `sort` / `uniq -d` | Détecter les lignes strictement dupliquées | `sort purchases.txt \| uniq -d \| wc -l` |
+| `awk -F'\t' '{print $N}' \| sort -u` | Lister les valeurs distinctes d'une colonne `N` | `awk -F'\t' '{print $6}' purchases.txt \| sort -u` |
+
+**Pourquoi ces commandes et pas un tableur ?** Elles ne chargent jamais l'intégralité du fichier en mémoire d'un coup : `wc`, `awk`, `sort` traitent le flux ligne par ligne (ou en passes optimisées pour `sort`), ce qui leur permet de rester utilisables sur des fichiers de plusieurs centaines de Mo, là où un tableur charge tout en RAM avant même d'afficher quoi que ce soit. C'est un premier avant-goût, à très petite échelle, du principe qui sera généralisé avec les architectures distribuées (§1.4) : traiter la donnée par blocs plutôt que de tout charger en un bloc unique.
+
 ---
 
 ## 2. Atelier pratique (45–60 min)
@@ -156,7 +174,7 @@ Chaque ligne du fichier (valeurs séparées par des tabulations) représente un 
 2. **Découverte du jeu de données**
 
    Consignes d'observation :
-   - Quelle est la taille du fichier (`ls -lh purchases.txt`, `wc -l purchases.txt`) ?
+   - Quelle est la taille du fichier (`ls -l purchases.txt`, `wc -l purchases.txt`) ?
    - Combien de lignes, combien de colonnes ?
    - Le format est-il homogène (mêmes colonnes partout) ou varie-t-il ?
    - Y a-t-il des valeurs manquantes, des doublons, des incohérences ?

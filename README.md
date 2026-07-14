@@ -75,15 +75,9 @@ purchases.txt ──► Atelier 4 (RDD puis DataFrame)
 
 L'ensemble repose sur la plateforme Docker construite à l'**atelier 3** (MongoDB + Spark), reproduite dans le Cloud à l'**atelier 7** (Amazon EMR).
 
-## 7. Origine des travaux pratiques
 
-Les supports d'atelier s'appuient sur trois TP de référence, dont ils reprennent les consignes et les jeux de données :
 
-- **TP2 — MongoDB** : import de `countries.json` dans `geodb.countries` et dix requêtes (régions, sous-régions, Sénégal, pays d'Afrique, Franc CFA, Gabon, populations agrégées) → repris dans l'Atelier 2.
-- **TP3 — Analyse de données d'achat avec Hadoop Hive** : cluster Amazon EMR, table `achatdb.purchases`, requêtes HiveQL (ventes par magasin, par tranche horaire, par mode de paiement, taux cash/électronique) via Hue/beeline → repris dans l'Atelier 5.
-- **TP4 — Analyse de données d'achats avec Hadoop Spark** : mêmes traitements que le TP3, réalisés en RDD (pyspark), en DataFrame et en Spark SQL (Zeppelin), avec requête pivot bonus → repris dans les Ateliers 4 et 5.
-
-## 8. Évaluation
+## 7. Évaluation
 
 | Évaluation | Pondération |
 |---|---:|
@@ -91,7 +85,7 @@ Les supports d'atelier s'appuient sur trois TP de référence, dont ils reprenne
 | Projet fil rouge | 30 % |
 | Examen final (concepts et étude de cas) | 40 % |
 
-## 9. Supports pédagogiques
+## 8. Supports pédagogiques
 
 - Supports de cours illustrés (fichiers `Atelier_*.md` de ce dossier) ;
 - Notebooks Jupyter / Zeppelin (PySpark, Spark SQL) ;
