@@ -1,8 +1,11 @@
 # Atelier 2 — Les bases de données NoSQL : concepts et mise en œuvre avec MongoDB
 
 **Module :** Introduction au Big Data et au Cloud Computing
+
 **Formation :** Licence Informatique 2 — SupDeCo
+
 **Enseignant :** M. TOP
+
 **Durée :** 2 heures
 
 ---

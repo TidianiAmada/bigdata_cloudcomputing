@@ -1,8 +1,11 @@
 # Atelier 3 — Docker pour les plateformes Big Data
 
 **Module :** Introduction au Big Data et au Cloud Computing
+
 **Formation :** Licence Informatique 2 — SupDeCo
+
 **Enseignant :** M. TOP
+
 **Durée :** 2 heures
 
 ---

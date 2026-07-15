@@ -1,8 +1,11 @@
 # Atelier 1 — Fondements du Big Data
 
 **Module :** Introduction au Big Data et au Cloud Computing
+
 **Formation :** Licence Informatique 2 — SupDeCo
+
 **Enseignant :** M. TOP
+
 **Durée :** 2 heures
 
 ---
@@ -13,7 +16,8 @@
 
 - expliquer les facteurs ayant conduit à l'émergence du Big Data ;
 - identifier les limites des SGBDR face aux données massives ;
-- définir et caractériser les cinq dimensions du Big Data ;
+- définir et caractériser les cinq dimensions du Big Data, et les seuils concrets qui leur sont associés ;
+- appliquer un test pratique en trois questions pour déterminer si un problème relève réellement du Big Data ;
 - décrire le principe d'une architecture distribuée.
 
 ---
@@ -59,15 +63,64 @@ La question n'est donc pas « le relationnel est-il dépassé ? » (il ne l'est 
 
 ### 1.3 Les 5V du Big Data
 
-Le Big Data se caractérise généralement par cinq dimensions. Les trois premières (Volume, Vélocité et Variété) ont été proposées par Doug Laney en 2001 ; les dimensions Véracité et Valeur ont été introduites ultérieurement afin de mieux caractériser les problématiques modernes liées aux données massives.
+Pour déterminer si un défi commercial ou technique relève réellement du Big Data, il faut dépasser les simples effets de mode. Le point de référence utilisé par les professionnels de l'industrie est le framework des **5V**. Les trois premières dimensions (Volume, Vélocité et Variété) ont été proposées par Doug Laney en 2001 ; les dimensions Véracité et Valeur ont été introduites ultérieurement afin de mieux caractériser les problématiques modernes liées aux données massives.
 
-- **Volume** : la quantité de données produites (téraoctets, pétaoctets, voire plus), qui dépasse la capacité de traitement d'un système classique.
-- **Vélocité** : la vitesse à laquelle les données sont générées et doivent être traitées (flux en temps réel, capteurs, transactions financières).
-- **Variété** : la diversité des formats — données structurées (tables), semi-structurées (JSON, XML), non structurées (texte, image, vidéo, son).
-- **Véracité** : la fiabilité et la qualité des données, souvent bruitées, incomplètes ou incohérentes lorsqu'elles proviennent de sources multiples.
-- **Valeur** : l'objectif final — une donnée n'a d'intérêt que si l'on peut en extraire une information exploitable pour la décision.
+Pour classer un problème dans la catégorie « Big Data », il n'est pas nécessaire que les 5V soient présentes simultanément : subir un goulot d'étranglement sur une seule ou deux de ces dimensions suffit bien souvent à saturer les systèmes traditionnels et à justifier le passage à une architecture Big Data.
 
-### 1.4 Introduction aux architectures distribuées
+**1. Le Volume (l'échelle des données)**
+
+- **Seuil** : la taille des données dépasse la capacité de stockage ou de traitement d'un serveur de base de données standard unique (généralement à partir de plusieurs dizaines de téraoctets, jusqu'au pétaoctet).
+- **Indicateur Big Data** : impossible de stocker l'ensemble des données sur un seul disque, ou des requêtes sur une base relationnelle classique qui prennent des heures, voire des jours. Il faut alors se tourner vers le stockage distribué (HDFS, Amazon S3).
+
+**2. La Vélocité (la vitesse des données)**
+
+- **Seuil** : les données sont générées à un rythme tel qu'elles doivent être traitées en temps réel ou quasi réel.
+- **Indicateur Big Data** : un traitement par lots exécuté la nuit n'est plus assez rapide — transactions financières à haute fréquence, capteurs IoT, clics utilisateurs en direct (milliers d'événements par seconde). Il faut des outils de traitement de flux (*stream processing*) comme Apache Kafka ou Spark Streaming.
+
+**3. La Variété (la diversité structurelle des données)**
+
+- **Seuil** : les données arrivent sous des formats multiples et imprévisibles — structurées, semi-structurées, non structurées — rendant les tables SQL rigides inefficaces.
+- **Indicateur Big Data** : une part importante des données est constituée de vidéos, d'audio, de publications sociales, de PDF ou de JSON dont le schéma change fréquemment. Il faut des bases NoSQL (comme MongoDB, Atelier 2) ou des *data lakes* pour stocker ces données brutes sans schéma prédéfini.
+
+**4. La Véracité (la fiabilité des données)**
+
+- **Seuil** : les données entrantes sont bruitées, incohérentes, incomplètes ou polluées par des anomalies (faux comptes, trafic de robots, bugs de capteurs).
+- **Indicateur Big Data** : l'échelle rend tout nettoyage manuel impossible ; il faut des pipelines de qualité des données automatisés et distribués (ETL) pour filtrer le bruit avant exploitation.
+
+**5. La Valeur (l'utilité business)**
+
+- **Seuil** : le coût de stockage et de traitement du volume de données doit être compensé par les décisions concrètes ou le gain d'efficacité qu'il permet.
+- **Indicateur Big Data** : posséder des téraoctets de données inactives est un fardeau plutôt qu'un atout. Un problème Big Data inclut la capacité à en extraire de la valeur — entraîner un modèle de Machine Learning, alimenter un moteur de recommandation, prédire une panne d'équipement.
+
+### 1.4 La règle d'or empirique : le test pratique du Big Data
+
+En cas d'hésitation entre déployer une infrastructure Big Data (Spark, Hadoop, AWS EMR) et conserver un système standard (une base PostgreSQL unique, un script Python), trois questions pratiques permettent de trancher :
+
+```text
+        Mes données tiennent-elles sur un seul serveur performant ?
+                          /                    \
+                      (Oui)                   (Non)
+                        │                        │
+     Arrivent-elles trop vite pour qu'une   C'est un problème Big Data !
+     base classique tienne à l'écriture ?
+              /                  \
+          (Oui)                (Non)
+            │                     │
+  C'est un problème Big Data !   Sont-elles trop complexes /
+                                  sans structure exploitable ?
+                                       /                \
+                                   (Oui)                (Non)
+                                     │                     │
+                          C'est un problème Big Data !   Problème de données
+                                                          traditionnel — restez
+                                                          sur du simple !
+```
+
+1. **Le test de la RAM** : l'ensemble des données à analyser tient-il entièrement dans la mémoire vive d'une seule machine très performante (plusieurs centaines de Go de RAM pour un serveur moderne) ? Si oui, ce n'est probablement pas encore du Big Data.
+2. **Scale-up vs scale-out** : les lenteurs de requêtes se résolvent-elles simplement en achetant un serveur plus puissant (*scaling up*), ou faut-il obligatoirement regrouper plusieurs machines pour diviser le travail (*scaling out*, calcul distribué — cf. §1.5) ? Si la distribution est incontournable, c'est du Big Data.
+3. **La rupture technologique** : si l'équipe passe plus de temps à concevoir des contournements pour éviter qu'une base SQL ne s'effondre sous la charge qu'à développer des fonctionnalités métier, l'infrastructure traditionnelle a atteint ses limites — c'est le point de rupture qui marque le début du Big Data.
+
+### 1.5 Introduction aux architectures distribuées
 
 Afin de répondre à ces limitations, l'approche du Big Data consiste à changer de paradigme : au lieu de renforcer une seule machine (*scale-up*), on répartit les données et les traitements sur **plusieurs machines** qui travaillent ensemble (*scale-out*, ou **scalabilité horizontale**).
 
@@ -102,7 +155,7 @@ Chaque nœud stocke une partie des données et exécute une partie du traitement
 
 C'est ce principe qui sous-tend l'ensemble des technologies étudiées dans ce module : NoSQL, Spark, Hadoop, et le Cloud Computing lui-même. Cette approche constitue le fondement des infrastructures modernes telles que Hadoop, Spark, Cassandra ou encore les plateformes de Cloud Computing.
 
-### 1.5 Les niveaux d'analytique décisionnelle
+### 1.6 Les niveaux d'analytique décisionnelle
 
 Traiter un gros volume de données n'a de sens que si l'on en tire une information exploitable (la dimension **Valeur** des 5V). On distingue classiquement quatre types d'analytique, du plus simple au plus complexe :
 
@@ -115,7 +168,7 @@ Traiter un gros volume de données n'a de sens que si l'on en tire une informati
 
 Ce module se concentre essentiellement sur l'analytique **descriptive** (agrégations, statistiques simples) réalisée à grande échelle — c'est la brique indispensable avant d'envisager les analyses diagnostique, prédictive ou prescriptive.
 
-### 1.6 Le pipeline Big Data et les rôles associés
+### 1.7 Le pipeline Big Data et les rôles associés
 
 Une architecture Big Data s'organise généralement selon les étapes suivantes :
 
@@ -139,7 +192,7 @@ Trois profils métiers interviennent typiquement le long de ce pipeline :
 
 Ce module place l'étudiant successivement du côté Data Engineer (construction de la plateforme : Docker, Spark, EMR) et Data Analyst (requêtes et agrégations sur les données).
 
-### 1.7 Exploration d'un jeu de données volumineux sous Linux
+### 1.8 Exploration d'un jeu de données volumineux sous Linux
 
 Préalablement à l'introduction d'un outil Big Data, quelques commandes shell standards permettent déjà de caractériser un jeu de données trop volumineux pour un tableur — ce sont elles que l'on utilise dans l'atelier pratique ci-dessous.
 
@@ -155,7 +208,7 @@ Préalablement à l'introduction d'un outil Big Data, quelques commandes shell s
 | `sort` / `uniq -d` | Détecter les lignes strictement dupliquées | `sort purchases.txt \| uniq -d \| wc -l` |
 | `awk -F'\t' '{print $N}' \| sort -u` | Lister les valeurs distinctes d'une colonne `N` | `awk -F'\t' '{print $6}' purchases.txt \| sort -u` |
 
-**Justification du recours aux outils Unix.** Elles ne chargent jamais l'intégralité du fichier en mémoire d'un coup : `wc`, `awk`, `sort` traitent le flux ligne par ligne (ou en passes optimisées pour `sort`), ce qui leur permet de rester utilisables sur des fichiers de plusieurs centaines de Mo, là où un tableur charge tout en RAM avant même d'afficher quoi que ce soit. C'est un premier avant-goût, à très petite échelle, du principe qui sera généralisé avec les architectures distribuées (§1.4) : traiter la donnée par blocs plutôt que de tout charger en un bloc unique.
+**Justification du recours aux outils Unix.** Elles ne chargent jamais l'intégralité du fichier en mémoire d'un coup : `wc`, `awk`, `sort` traitent le flux ligne par ligne (ou en passes optimisées pour `sort`), ce qui leur permet de rester utilisables sur des fichiers de plusieurs centaines de Mo, là où un tableur charge tout en RAM avant même d'afficher quoi que ce soit. C'est un premier avant-goût, à très petite échelle, du principe qui sera généralisé avec les architectures distribuées (§1.5) : traiter la donnée par blocs plutôt que de tout charger en un bloc unique.
 
 ---
 
@@ -222,13 +275,17 @@ Avant de commencer les manipulations, répondre aux questions suivantes :
 5. **Restitution collective**
    Chaque groupe présente une limite identifiée et la dimension du Big Data (V) à laquelle elle correspond.
 
+6. **Application du test pratique (§1.4)**
+   Sur la base des observations précédentes, chaque groupe répond aux trois questions de la règle d'or (RAM, scale-up/scale-out, rupture technologique) pour `purchases.txt` et justifie sa conclusion.
+
 ---
 
 ## 3. Synthèse
 
 - Le Big Data n'est pas une mode technologique mais une réponse à une transformation réelle du volume, de la vitesse et de la diversité des données produites.
 - Les bases relationnelles restent pertinentes pour l'immense majorité des applications de gestion ; elles atteignent leurs limites face à certains volumes, certains formats, ou certaines exigences de vélocité.
-- Les 5V (Volume, Vélocité, Variété, Véracité, Valeur) donnent une grille de lecture pour qualifier un problème « Big Data ».
+- Les 5V (Volume, Vélocité, Variété, Véracité, Valeur) donnent une grille de lecture pour qualifier un problème « Big Data » — il suffit qu'une seule dimension atteigne son seuil critique pour justifier une architecture distribuée.
+- Le test pratique en trois questions (RAM, scale-up/scale-out, rupture technologique) permet de trancher rapidement, sur un cas concret, si un problème relève ou non du Big Data.
 - La réponse technique repose sur la **distribution** : répartir données et calculs sur plusieurs machines plutôt que de renforcer une seule machine.
 - Tout traitement Big Data s'inscrit dans un pipeline en quatre étapes (ingestion → stockage → traitement → analyse/visualisation), et vise le plus souvent une analytique descriptive avant d'envisager le diagnostic, la prédiction ou la prescription.
 
@@ -241,7 +298,8 @@ Ce constat sert de fil conducteur à l'ensemble du module : NoSQL (Atelier 2) pu
 À l'issue de cet atelier, les notions suivantes doivent être maîtrisées :
 
 - Big Data
-- 5V
+- 5V (seuils et indicateurs)
+- Règle d'or empirique (test RAM, scale-up/scale-out, rupture technologique)
 - Scale-up
 - Scale-out
 - Architecture distribuée
@@ -256,9 +314,10 @@ Ce constat sert de fil conducteur à l'ensemble du module : NoSQL (Atelier 2) pu
 1. Pourquoi les SGBDR atteignent-ils leurs limites face aux données massives ?
 2. Expliquez la différence entre scalabilité verticale et horizontale.
 3. Les technologies Big Data remplacent-elles les bases relationnelles ? Justifiez.
-4. Décrivez les cinq dimensions du Big Data.
+4. Décrivez les cinq dimensions du Big Data et donnez, pour chacune, un indicateur concret de bascule vers le Big Data.
 5. Quel est le rôle d'une architecture distribuée ?
 6. Pourquoi la notion de Valeur est-elle considérée comme la finalité du Big Data ?
+7. À l'aide du test pratique en trois questions, déterminez si l'analyse d'un fichier CSV de 2 Go sur un ordinateur portable relève du Big Data. Justifiez.
 
 ---
 

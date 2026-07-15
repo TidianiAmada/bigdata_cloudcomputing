@@ -1,8 +1,11 @@
 # Atelier 4 — Traitement distribué avec Apache Spark
 
 **Module :** Introduction au Big Data et au Cloud Computing
+
 **Formation :** Licence Informatique 2 — SupDeCo
+
 **Enseignant :** M. TOP
+
 **Durée :** 3 heures
 
 ---
