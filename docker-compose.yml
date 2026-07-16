@@ -1,0 +1,41 @@
+version: "3.8"
+
+services:
+  mongodb:
+    image: mongo:latest
+    container_name: mongodb
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    networks:
+      - bigdata_net
+
+  spark-master:
+    image: spark:r-java17
+    container_name: spark-master
+    environment:
+      - SPARK_MODE=master
+    ports:
+      - "8080:8080"   # interface web du master
+      - "7077:7077"   # port de communication Spark
+    networks:
+      - bigdata_net
+
+  spark-worker:
+    image: spark:r-java17
+    container_name: spark-worker
+    environment:
+      - SPARK_MODE=worker
+      - SPARK_MASTER_URL=spark://spark-master:7077
+    depends_on:
+      - spark-master
+    networks:
+      - bigdata_net
+
+volumes:
+  mongo_data:
+
+networks:
+  bigdata_net:
+    driver: bridge

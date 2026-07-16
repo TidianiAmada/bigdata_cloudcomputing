@@ -7,8 +7,11 @@ Corrigé de l'atelier pratique (partie 3 de [Atelier_2_NoSQL_MongoDB.md](../Atel
 ## 0. Environnement
 
 ```bash
+# Executer l'image de mongo db
 docker run -d --name mongodb -p 27017:27017 mongo:latest
+# Copier les données sur le container
 docker cp countries.json mongodb:/tmp/countries.json
+# Creer la collection
 docker exec -it mongodb mongoimport --db geodb --collection countries --jsonArray --file /tmp/countries.json
 ```
 
