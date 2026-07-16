@@ -18,7 +18,7 @@ docker exec -it mongodb mongoimport --db geodb --collection countries --jsonArra
 
 Vérification :
 
-```javascript
+```mql
 db.countries.countDocuments()   // → 250
 ```
 
@@ -30,7 +30,7 @@ Les 250 documents attendus sont bien présents.
 
 ## 3.1 Liste des régions du monde
 
-```javascript
+```  MongoDB Query Language (MQL)
 db.countries.distinct("region")
 ```
 
@@ -42,7 +42,7 @@ db.countries.distinct("region")
 
 ## 3.2 Liste des sous-régions
 
-```javascript
+``` MongoDB Query Language (MQL)
 db.countries.distinct("subregion")
 ```
 
@@ -60,7 +60,7 @@ db.countries.distinct("subregion")
 
 ## 3.3 Région et sous-région du Sénégal
 
-```javascript
+```mql
 db.countries.findOne({ name: "Senegal" }, { region: 1, subregion: 1, _id: 0 })
 ```
 
@@ -72,7 +72,7 @@ db.countries.findOne({ name: "Senegal" }, { region: 1, subregion: 1, _id: 0 })
 
 ## 3.4 Liste des pays de la région « Africa »
 
-```javascript
+```mql
 db.countries.distinct("name", { region: "Africa" })
 ```
 
@@ -80,7 +80,7 @@ db.countries.distinct("name", { region: "Africa" })
 
 ## 3.5 Pays d'Afrique dont la monnaie est le Franc CFA
 
-```javascript
+```mql
 db.countries.find(
   { region: "Africa", "currencies.name": { $in: ["West African CFA franc", "Central African CFA franc"] } },
   { name: 1, _id: 0 }
@@ -96,7 +96,7 @@ db.countries.find(
 
 ## 3.6 Nombre de pays de la région « Africa »
 
-```javascript
+```mql
 db.countries.countDocuments({ region: "Africa" })
 ```
 
@@ -108,7 +108,7 @@ db.countries.countDocuments({ region: "Africa" })
 
 ## 3.7 Capitale et population du Gabon
 
-```javascript
+```mql
 db.countries.findOne({ name: "Gabon" }, { capital: 1, population: 1, _id: 0 })
 ```
 
@@ -118,7 +118,7 @@ db.countries.findOne({ name: "Gabon" }, { capital: 1, population: 1, _id: 0 })
 
 ## 3.8 Pays d'Afrique de moins de 8 millions d'habitants
 
-```javascript
+```mql
 db.countries.find(
   { region: "Africa", population: { $lt: 8000000 } },
   { name: 1, capital: 1, population: 1, _id: 0 }
@@ -129,7 +129,7 @@ db.countries.find(
 
 ## 3.9 Nombre total d'habitants de la région Afrique
 
-```javascript
+```mql
 db.countries.aggregate([
   { $match: { region: "Africa" } },
   { $group: { _id: null, totalPopulation: { $sum: "$population" } } }
@@ -144,7 +144,7 @@ db.countries.aggregate([
 
 ## 3.10 Nombre total d'habitants par région
 
-```javascript
+```mql
 db.countries.aggregate([
   { $group: { _id: "$region", totalPopulation: { $sum: "$population" } } },
   { $sort: { totalPopulation: -1 } }
@@ -173,7 +173,7 @@ db.countries.aggregate([
 
 ### 4. Requête 3.8 appliquée à l'Europe
 
-```javascript
+```mql
 db.countries.find(
   { region: "Europe", population: { $lt: 8000000 } },
   { name: 1, capital: 1, population: 1, _id: 0 }
@@ -184,7 +184,7 @@ db.countries.find(
 
 ### Pour aller plus loin : `$avg` au lieu de `$sum`
 
-```javascript
+```mql
 db.countries.aggregate([
   { $group: { _id: "$region", avgPopulation: { $avg: "$population" } } },
   { $sort: { avgPopulation: -1 } }
