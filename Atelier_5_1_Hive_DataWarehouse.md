@@ -420,17 +420,16 @@ Distributed
 
 ## Partie VIII — Atelier pratique Docker (1 h 30)
 
-> **Environnement.** Cet atelier utilise un environnement Docker dédié à Hive (distinct de la plateforme MongoDB + Spark de l'Atelier 3), comprenant HDFS (NameNode, DataNode), YARN et Hive (Metastore adossé à PostgreSQL, HiveServer2). Un exemple d'orchestration, basé sur les images `bde2020/hadoop-*` et `bde2020/hive` largement utilisées à des fins pédagogiques :
+> **Environnement.** Faute d'accès à Amazon EMR à ce stade, cet atelier utilise un environnement Docker dédié à Hive (distinct de la plateforme MongoDB + Spark de l'Atelier 3, et du cluster HDFS+YARN de l'Atelier 4.1 — chaque atelier ayant sa propre pile Docker autonome), comprenant HDFS (NameNode, DataNode) et Hive (Metastore adossé à PostgreSQL, HiveServer2). Orchestration basée sur les images `bde2020/hadoop-*` et `bde2020/hive`, fournie à la racine du dépôt sous le nom `docker-compose-hive.yml` :
 
 ```yaml
-version: "3.8"
-
 services:
   namenode:
     image: bde2020/hadoop-namenode:2.0.0-hadoop3.2.1-java8
     container_name: namenode
     environment:
       - CLUSTER_NAME=hive-cluster
+      - CORE_CONF_fs_defaultFS=hdfs://namenode:8020
     ports:
       - "9870:9870"
     networks:
@@ -440,6 +439,7 @@ services:
     image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
     container_name: datanode
     environment:
+      - CORE_CONF_fs_defaultFS=hdfs://namenode:8020
       - SERVICE_PRECONDITION=namenode:9870
     depends_on:
       - namenode
@@ -470,6 +470,8 @@ services:
       - SERVICE_PRECONDITION=hive-metastore:9083
     ports:
       - "10000:10000"
+    volumes:
+      - ./data:/data   # purchases.txt, réutilisé par TP6 (External Table) et TP7 (LOAD DATA LOCAL)
     depends_on:
       - hive-metastore
     networks:
@@ -480,19 +482,29 @@ networks:
     driver: bridge
 ```
 
-> **Note.** Les tags d'image évoluent avec le temps ; vérifier leur disponibilité avant la séance et ajuster si nécessaire (cf. la remarque similaire sur les images Spark à l'Atelier 3).
+> **Note.** `CORE_CONF_fs_defaultFS` est indispensable : sans cette variable, le DataNode ne sait pas vers quel hôte annoncer ses blocs et reste indéfiniment en attente de connexion au NameNode (`hdfs dfsadmin -report` afficherait alors `Live datanodes (0)`) — un piège de configuration bien réel, identique à celui rencontré et corrigé pour de vrai sur le cluster HDFS+YARN de l'[Atelier 4.1](Solutions/Solution_Atelier_4_1.md). Les tags d'image évoluent par ailleurs avec le temps ; vérifier leur disponibilité avant la séance et ajuster si nécessaire (cf. la remarque similaire sur les images Spark à l'Atelier 3).
+
+Démarrage de la plateforme depuis la racine du dépôt (`purchases.txt` placé au préalable dans le dossier `data/`) :
+
+```bash
+docker compose -f docker-compose-hive.yml up -d
+```
 
 ### TP1 — Découvrir le cluster
 
 ```bash
-docker compose ps
+docker compose -f docker-compose-hive.yml ps
 ```
 
-### TP2 — Entrer dans le conteneur Hive
+### TP2 — Entrer dans le conteneur Hive et déposer `purchases.txt` sur HDFS
 
 ```bash
 docker exec -it hive-server bash
+hdfs dfs -mkdir -p /data/raw
+hdfs dfs -put /data/purchases.txt /data/raw/
 ```
+
+`/data/purchases.txt` correspond au fichier monté en volume dans le conteneur `hive-server` (§ compose ci-dessus) ; `/data/raw` est le répertoire HDFS qui sera référencé par la clause `LOCATION` de la table External (TP6).
 
 ### TP3 — Se connecter à Hive
 
@@ -540,10 +552,10 @@ LOCATION '/data/raw';
 
 ### TP7 — Charger `purchases.txt` dans la table Managed
 
-Contrairement à l'External Table (TP6), qui référence des données déjà présentes sur HDFS, la table Managed reçoit ici une copie du fichier local :
+Contrairement à l'External Table (TP6), qui référence des données déjà présentes sur HDFS, la table Managed reçoit ici une **copie** du fichier local (`/data/purchases.txt`, le même fichier monté en volume qu'au TP2, mais lu cette fois depuis le système de fichiers local du conteneur plutôt que depuis HDFS — d'où `LOCAL` dans la clause) :
 
 ```sql
-LOAD DATA LOCAL INPATH '/tmp/purchases.txt'
+LOAD DATA LOCAL INPATH '/data/purchases.txt'
 INTO TABLE purchases_managed;
 ```
 

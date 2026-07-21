@@ -1,0 +1,61 @@
+# Atelier 5.1 — cluster Hive local (HDFS + Hive Metastore/PostgreSQL + HiveServer2), sans dépendance à Amazon EMR.
+# Démarrage : docker compose -f docker-compose-hive.yml up -d
+# Arrêt     : docker compose -f docker-compose-hive.yml down
+
+services:
+  namenode:
+    image: bde2020/hadoop-namenode:2.0.0-hadoop3.2.1-java8
+    container_name: namenode
+    environment:
+      - CLUSTER_NAME=hive-cluster
+      - CORE_CONF_fs_defaultFS=hdfs://namenode:8020
+    ports:
+      - "9870:9870"
+    networks:
+      - hive_net
+
+  datanode:
+    image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
+    container_name: datanode
+    environment:
+      - CORE_CONF_fs_defaultFS=hdfs://namenode:8020
+      - SERVICE_PRECONDITION=namenode:9870
+    depends_on:
+      - namenode
+    networks:
+      - hive_net
+
+  hive-metastore-postgresql:
+    image: bde2020/hive-metastore-postgresql:2.3.0
+    container_name: hive-metastore-postgresql
+    networks:
+      - hive_net
+
+  hive-metastore:
+    image: bde2020/hive:2.3.2-postgresql-metastore
+    container_name: hive-metastore
+    command: /opt/hive/bin/hive --service metastore
+    environment:
+      - SERVICE_PRECONDITION=hive-metastore-postgresql:5432
+    depends_on:
+      - hive-metastore-postgresql
+    networks:
+      - hive_net
+
+  hive-server:
+    image: bde2020/hive:2.3.2-postgresql-metastore
+    container_name: hive-server
+    environment:
+      - SERVICE_PRECONDITION=hive-metastore:9083
+    ports:
+      - "10000:10000"
+    volumes:
+      - ./data:/data   # purchases.txt, réutilisé par TP6 (External Table) et TP7 (LOAD DATA LOCAL)
+    depends_on:
+      - hive-metastore
+    networks:
+      - hive_net
+
+networks:
+  hive_net:
+    driver: bridge

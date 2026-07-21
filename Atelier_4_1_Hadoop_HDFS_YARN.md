@@ -197,19 +197,20 @@ C'est ce même ResourceManager qui, à l'Atelier 4.2, négociera les ressources 
 
 ## 2. Partie pratique (1 h)
 
-> **Environnement.** Cette partie pratique s'exécute sur un cluster Hadoop réel — en séance, le cluster Amazon EMR mis à disposition (mêmes commandes que sur tout cluster Hadoop standard ; déploiement complet, coûts et bonnes pratiques détaillés à l'Atelier 7). Pour travailler en autonomie sans EMR, un cluster Hadoop minimal (HDFS + YARN) peut être monté localement avec Docker Compose, distinct de la plateforme MongoDB + Spark de l'Atelier 3 :
+> **Environnement.** En l'absence d'accès à Amazon EMR à ce stade du module (cluster réel déployé plus tard, à l'Atelier 7, une fois ses coûts et bonnes pratiques étudiés), cette partie pratique s'exécute sur un cluster Hadoop minimal (HDFS + YARN) monté **localement avec Docker Compose**, distinct de la plateforme MongoDB + Spark de l'Atelier 3. Le fichier `docker-compose-hadoop.yml`, fourni à la racine du dépôt avec ses fichiers d'accompagnement (`Dockerfile.nodemanager`, `Dockerfile.spark-client`, `hadoop-conf/`), sert de plateforme commune à cet atelier et au suivant : les services `namenode`, `datanode1`, `datanode2`, `resourcemanager` et `nodemanager` forment le cluster HDFS + YARN manipulé ici ; le service `spark-client`, inclus dans le même fichier, est celui que l'Atelier 4.2 utilisera pour soumettre ses jobs Spark à ce ResourceManager :
 
 ```yaml
-version: "3.8"
-
 services:
   namenode:
     image: bde2020/hadoop-namenode:2.0.0-hadoop3.2.1-java8
     container_name: namenode
     environment:
       - CLUSTER_NAME=hdfs-yarn-cluster
+      - CORE_CONF_fs_defaultFS=hdfs://namenode:8020
     ports:
       - "9870:9870"   # interface web du NameNode
+    volumes:
+      - ./data:/data   # purchases.txt, à déposer ensuite sur HDFS avec hdfs dfs -put
     networks:
       - hadoop_net
 
@@ -217,6 +218,7 @@ services:
     image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
     container_name: datanode1
     environment:
+      - CORE_CONF_fs_defaultFS=hdfs://namenode:8020
       - SERVICE_PRECONDITION=namenode:9870
     depends_on:
       - namenode
@@ -227,6 +229,7 @@ services:
     image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
     container_name: datanode2
     environment:
+      - CORE_CONF_fs_defaultFS=hdfs://namenode:8020
       - SERVICE_PRECONDITION=namenode:9870
     depends_on:
       - namenode
@@ -237,6 +240,8 @@ services:
     image: bde2020/hadoop-resourcemanager:2.0.0-hadoop3.2.1-java8
     container_name: resourcemanager
     environment:
+      - CORE_CONF_fs_defaultFS=hdfs://namenode:8020
+      - YARN_CONF_yarn_resourcemanager_hostname=resourcemanager
       - SERVICE_PRECONDITION=namenode:9870 datanode1:9864 datanode2:9864
     ports:
       - "8088:8088"   # interface web du ResourceManager
@@ -246,12 +251,43 @@ services:
       - hadoop_net
 
   nodemanager:
-    image: bde2020/hadoop-nodemanager:2.0.0-hadoop3.2.1-java8
+    build:
+      context: .
+      dockerfile: Dockerfile.nodemanager   # image reconstruite localement — raison détaillée à l'Atelier 4.2
+    image: hadoop-nodemanager-py39:2.0.0-hadoop3.2.1-java8
     container_name: nodemanager
     environment:
+      - CORE_CONF_fs_defaultFS=hdfs://namenode:8020
+      - YARN_CONF_yarn_resourcemanager_hostname=resourcemanager
+      - YARN_CONF_yarn_nodemanager_aux___services=mapreduce_shuffle
+      - YARN_CONF_yarn_nodemanager_pmem___check___enabled=false
+      - YARN_CONF_yarn_nodemanager_vmem___check___enabled=false
       - SERVICE_PRECONDITION=resourcemanager:8088
     depends_on:
       - resourcemanager
+    networks:
+      - hadoop_net
+
+  spark-client:
+    # Atelier 4.2 — non utilisé dans cette partie pratique, mais démarré avec le reste du cluster.
+    build:
+      context: .
+      dockerfile: Dockerfile.spark-client
+    image: spark-client-py39:latest
+    container_name: spark-client
+    command: ["tail", "-f", "/dev/null"]
+    environment:
+      - HADOOP_CONF_DIR=/etc/hadoop/conf
+      - YARN_CONF_DIR=/etc/hadoop/conf
+      - HADOOP_USER_NAME=root
+    ports:
+      - "4040:4040"
+    volumes:
+      - ./hadoop-conf:/etc/hadoop/conf:ro
+      - ./data:/data
+    depends_on:
+      - resourcemanager
+      - nodemanager
     networks:
       - hadoop_net
 
@@ -260,9 +296,16 @@ networks:
     driver: bridge
 ```
 
-> **Note.** Deux DataNodes (facteur de réplication effectif limité à 2, contre 3 par défaut sur un cluster EMR de séance — un point à signaler explicitement en classe) et un seul NodeManager suffisent pour observer réellement la répartition et la réplication des blocs (§1.4-1.9) sans surcharger une machine de travail. Les tags d'image évoluent avec le temps ; vérifier leur disponibilité avant la séance et ajuster si nécessaire (même remarque qu'aux Ateliers 3 et 5.1).
+> **Note.** Deux DataNodes (facteur de réplication effectif limité à 2, contre 3 par défaut sur un cluster EMR — un point à signaler explicitement en classe) et un seul NodeManager suffisent pour observer réellement la répartition et la réplication des blocs (§1.4-1.9) sans surcharger une machine de travail. Les tags d'image évoluent avec le temps ; vérifier leur disponibilité avant la séance et ajuster si nécessaire (même remarque qu'aux Ateliers 3 et 5.1).
 
-Une fois la plateforme démarrée (`docker compose up -d`), les commandes ci-dessous s'exécutent depuis un terminal ouvert dans le conteneur `namenode` :
+Démarrage de la plateforme depuis la racine du dépôt (la construction des images `nodemanager` et `spark-client` via `--build` n'est nécessaire qu'au premier lancement, ou après modification des `Dockerfile.*`) :
+
+```bash
+docker compose -f docker-compose-hadoop.yml up -d --build
+docker compose -f docker-compose-hadoop.yml ps
+```
+
+Les commandes ci-dessous s'exécutent depuis un terminal ouvert dans le conteneur `namenode` :
 
 ```bash
 docker exec -it namenode bash
@@ -290,10 +333,10 @@ hdfs dfs -ls /
 hdfs dfs -mkdir -p /data/raw
 ```
 
-**Copier `purchases.txt` dans HDFS :**
+**Copier `purchases.txt` dans HDFS :** (`purchases.txt` déposé au préalable dans le dossier `data/`, monté en volume sur `/data` dans le conteneur `namenode`, cf. `docker-compose-hadoop.yml`)
 
 ```bash
-hdfs dfs -put purchases.txt /data/raw/
+hdfs dfs -put /data/purchases.txt /data/raw/
 ```
 
 **Vérifier la copie :**

@@ -16,7 +16,7 @@
 
 > **Rappel du fil rouge.** La table Hive `achatdb.purchases` (et ses variantes Managed/External/partitionnée/bucketisée) a été créée à l'Atelier 5.1, et les traitements RDD/DataFrame ont été écrits sur `purchases.txt` à l'Atelier 4.2. Cet atelier ajoute la **quatrième** façon d'exprimer les mêmes quatre questions métier : en SQL, directement dans Spark. Il ne recrée pas de table Hive — il s'appuie sur un DataFrame chargé depuis le même fichier `purchases.txt`.
 
-> **Environnement.** Aucun nouveau service Docker n'est nécessaire : Spark SQL n'est qu'une interface SQL au-dessus du même moteur Spark déjà utilisé à l'Atelier 4.2. Cet atelier s'exécute donc dans le même conteneur `spark-master` de la plateforme Docker de l'Atelier 3 (`docker exec -it spark-master pyspark`, ou un script `spark-submit`). Le chemin `"purchases.txt"` des exemples ci-dessous est à adapter selon l'environnement, comme indiqué à l'Atelier 4.2 (`/data/purchases.txt` en local Docker, `/data/raw/purchases.txt` sur HDFS).
+> **Environnement.** Aucun nouveau service Docker n'est nécessaire : Spark SQL n'est qu'une interface SQL au-dessus du même moteur Spark déjà utilisé à l'Atelier 4.2. Faute d'accès à Amazon EMR à ce stade, cet atelier s'exécute donc dans le même conteneur `spark-client` du cluster HDFS + YARN des Ateliers 4.1/4.2 (`docker-compose-hadoop.yml`, fourni à la racine du dépôt — `docker exec -it spark-client pyspark --master yarn --deploy-mode client`, ou un script `spark-submit`). Le chemin des exemples ci-dessous (`hdfs://namenode:8020/data/raw/purchases.txt`) est celui déjà utilisé à l'Atelier 4.2 ; sur la plateforme Standalone alternative de l'Atelier 3 (`docker-compose-mongo-spark.yml`), utiliser `/data/purchases.txt` à la place.
 
 ---
 
@@ -68,7 +68,7 @@ Clauses SQL mobilisées dans cet atelier : `GROUP BY`, `ORDER BY`, `CASE WHEN ..
 
 ```python
 schema = "pdate DATE, ptime STRING, store STRING, product STRING, cost DOUBLE, payment STRING"
-df = spark.read.csv("purchases.txt", sep="\t", schema=schema)
+df = spark.read.csv("hdfs://namenode:8020/data/raw/purchases.txt", sep="\t", schema=schema)
 
 df.createOrReplaceTempView("purchases")
 ```

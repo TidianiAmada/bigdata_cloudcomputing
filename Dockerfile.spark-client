@@ -1,0 +1,15 @@
+# Atelier 4.2 — client Spark (driver) avec le même Python 3.9 (Miniconda) que le NodeManager.
+# PySpark exige que driver et executors utilisent la même version mineure de Python
+# ("Python in worker has different version X than that in driver Y") : apache/spark-py:latest
+# embarque Python 3.10 par défaut, incompatible avec le 3.9 installé côté NodeManager
+# (cf. Dockerfile.nodemanager) sans cette étape.
+FROM apache/spark-py:latest
+
+USER root
+RUN curl -sL -o /tmp/miniconda.sh https://repo.anaconda.com/miniconda/Miniconda3-py39_23.5.2-0-Linux-x86_64.sh \
+ && bash /tmp/miniconda.sh -b -p /opt/conda \
+ && rm /tmp/miniconda.sh \
+ && mkdir -p /opt/spark/conf \
+ && echo "spark.pyspark.python /opt/conda/bin/python3"        >> /opt/spark/conf/spark-defaults.conf \
+ && echo "spark.pyspark.driver.python /opt/conda/bin/python3" >> /opt/spark/conf/spark-defaults.conf
+USER 185

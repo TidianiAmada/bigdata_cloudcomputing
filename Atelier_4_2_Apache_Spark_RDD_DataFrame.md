@@ -58,7 +58,7 @@ Vue générale, indépendante du gestionnaire de ressources utilisé :
 
 - **Driver** : processus qui exécute le code principal (`main`), construit le plan d'exécution et distribue les tâches.
 - **Executors** : processus déployés sur les nœuds du cluster, qui exécutent réellement les tâches et stockent les données en mémoire ou sur disque.
-- **Cluster Manager** : composant responsable de l'allocation des ressources (CPU, mémoire) aux executors. Dans notre environnement Docker (Atelier 3), on utilise le mode **Standalone** ; sur un cluster Hadoop/EMR, ce rôle est tenu par **YARN**.
+- **Cluster Manager** : composant responsable de l'allocation des ressources (CPU, mémoire) aux executors. Deux modes existent : **Standalone** (mode autonome de Spark, utilisé par la plateforme MongoDB + Spark de l'Atelier 3) et **YARN** (utilisé sur un cluster Hadoop/EMR). Cet atelier utilise directement **YARN**, sur le même cluster Hadoop que l'Atelier 4.1 (`docker-compose-hadoop.yml`), pour observer l'articulation Spark/YARN réelle plutôt que le mode Standalone.
 
 **Sur YARN** (celui vu à l'Atelier 4.1), l'architecture se précise ainsi :
 
@@ -182,7 +182,8 @@ parsed_cached.count()   # second appel : beaucoup plus rapide, lu depuis le cach
 |---|---|
 | `pyspark` | Ouvrir un shell interactif Python avec Spark déjà initialisé (variables `sc` et `spark` disponibles) |
 | `spark-submit <script.py>` | Exécuter un script Spark de façon non interactive (le mode utilisé en production, et pour chronométrer un traitement) |
-| `spark-submit --master local[*] <script.py>` | Idem, en forçant l'exécution locale en utilisant tous les cœurs disponibles (`*`) |
+| `spark-submit --master yarn --deploy-mode client <script.py>` | Soumettre le script au **ResourceManager YARN** de l'Atelier 4.1 (le mode utilisé dans cet atelier) : Driver dans le conteneur `spark-client`, Executors dans des Containers YARN sur le NodeManager |
+| `spark-submit --master local[*] <script.py>` | Alternative : exécution locale en utilisant tous les cœurs disponibles (`*`), sans passer par YARN |
 
 **API RDD (bas niveau, clé-valeur) :**
 
@@ -228,24 +229,32 @@ Fichier texte, valeurs séparées par des **tabulations**, sans ligne d'en-tête
 | 4 | `cost` | flottant | 16.98 |
 | 5 | `payment` | chaîne | Cash / Visa / MasterCard / Amex / Discover |
 
-Le fichier a déjà été déposé sur HDFS à l'Atelier 4.1 (`/data/raw/purchases.txt`). En environnement local (plateforme Docker de l'Atelier 3, sans HDFS), il peut aussi être placé dans un dossier monté en volume (par exemple `./data:/data`), accessible via `/data/purchases.txt`.
+Le fichier a déjà été déposé sur HDFS à l'Atelier 4.1 (`/data/raw/purchases.txt`) — cet atelier lit ce même fichier, sur ce même cluster HDFS+YARN (`docker-compose-hadoop.yml`), sans nouveau dépôt ni chemin local à gérer : `spark.read.csv("hdfs://namenode:8020/data/raw/purchases.txt", ...)` (ou `sc.textFile(...)` pour la Partie A). C'est le service `spark-client` du même fichier compose, configuré pour soumettre ses jobs au ResourceManager de l'Atelier 4.1, qui exécute les traitements ci-dessous.
 
-Dans les exemples de code ci-dessous, le chemin `"purchases.txt"` est à adapter selon l'environnement (`/data/raw/purchases.txt` sur HDFS, `/data/purchases.txt` en local Docker).
+> **Note sur le choix des images.** Contrairement aux services `namenode`/`datanode*`/`resourcemanager`, utilisés tels quels à l'Atelier 4.1, les services `nodemanager` et `spark-client` sont **reconstruits localement** (`Dockerfile.nodemanager`, `Dockerfile.spark-client`, `docker compose ... up -d --build`) plutôt qu'utilisés tels quels. Raison : PySpark exige une version de Python ≥ 3.6 (annotations de variables, PEP 526) identique entre le Driver (`spark-client`) et les Executors (exécutés dans des Containers YARN, donc sur `nodemanager`) ; l'image `bde2020/hadoop-nodemanager` embarque un Python 3.5 (héritage Debian 9), trop ancien pour PySpark. Les deux Dockerfiles installent le **même** Python 3.9 autonome (Miniconda), indépendant des paquets système — le même type de problème, et de solution, que le remplacement de `bitnami/spark` à l'Atelier 3 (image indisponible plutôt qu'incompatible, mais la même leçon : vérifier la compatibilité réelle d'une image avant de l'adopter).
+
+> **Alternative Standalone.** Si l'on préfère isoler Spark de HDFS/YARN (par exemple pour rejouer uniquement cet atelier sans redémarrer tout l'Atelier 4.1), la plateforme MongoDB + Spark de l'Atelier 3 (`docker-compose-mongo-spark.yml`, mode Standalone) fonctionne aussi : dans ce cas, déposer `purchases.txt` dans le dossier `./data` monté en volume et lire `/data/purchases.txt` (chemin local du conteneur, sans `hdfs://`) plutôt que le chemin HDFS ci-dessus.
 
 ---
 
 ## 3. Partie A — Traitements avec les RDD (shell `pyspark`)
 
-Lancement du shell interactif :
+Si la plateforme de l'Atelier 4.1 n'est pas déjà active (`docker compose -f docker-compose-hadoop.yml ps`), la démarrer avant de continuer :
 
 ```bash
-pyspark
+docker compose -f docker-compose-hadoop.yml up -d --build
+```
+
+Lancement du shell interactif, dans le conteneur `spark-client`, soumis au ResourceManager YARN de l'Atelier 4.1 :
+
+```bash
+docker exec -it spark-client pyspark --master yarn --deploy-mode client
 ```
 
 ### 3.1 Lecture et parsing
 
 ```python
-purchases = sc.textFile("purchases.txt")
+purchases = sc.textFile("hdfs://namenode:8020/data/raw/purchases.txt")
 
 def parse_line(line):
     return line.split("\t")   # [pdate, ptime, store, product, cost, payment]
@@ -301,7 +310,13 @@ taux_paiement.collect()
 
 ---
 
-## 4. Partie B — Mêmes traitements avec l'API DataFrame (Zeppelin ou notebook)
+## 4. Partie B — Mêmes traitements avec l'API DataFrame (script `spark-submit`)
+
+Écrire le code ci-dessous dans un script (par exemple `df_atelier.py`) et le soumettre au même cluster YARN :
+
+```bash
+docker exec -it spark-client /opt/spark/bin/spark-submit --master yarn --deploy-mode client df_atelier.py
+```
 
 ### 4.1 Lecture avec un schéma explicite
 
@@ -313,7 +328,7 @@ spark = SparkSession.builder.appName("AtelierSparkDF").getOrCreate()
 
 schema = "pdate DATE, ptime STRING, store STRING, product STRING, cost DOUBLE, payment STRING"
 
-df = spark.read.csv("purchases.txt", sep="\t", schema=schema)
+df = spark.read.csv("hdfs://namenode:8020/data/raw/purchases.txt", sep="\t", schema=schema)
 df.printSchema()
 df.show(5)
 ```
@@ -362,7 +377,7 @@ df.withColumn("categorie", when(col("payment") == "Cash", "cash").otherwise("ele
 
 ## 5. Observer l'exécution avec Spark UI
 
-Chaque application Spark active expose une interface web de suivi, généralement sur `localhost:4040` (le port s'incrémente à 4041, 4042... si plusieurs applications tournent en parallèle).
+Chaque application Spark active expose une interface web de suivi, généralement sur `localhost:4040` (le port s'incrémente à 4041, 4042... si plusieurs applications tournent en parallèle) — port publié par le service `spark-client` du `docker-compose-hadoop.yml`. Une fois l'application terminée, YARN conserve la même information : `http://localhost:8088` (interface du ResourceManager, cf. Atelier 4.1) liste les applications soumises, chacune avec un lien *Tracking-URL* vers son historique.
 
 Après avoir exécuté au moins une action (par exemple la question 1 en DataFrame), ouvrir `http://localhost:4040` et identifier :
 
@@ -412,6 +427,6 @@ Cette table résume la progression du chapitre : du **stockage distribué** (HDF
 
 ## Pour aller plus loin
 
-- Explorer l'interface web Spark (`http://localhost:8080` pour le cluster Standalone de l'Atelier 3, `http://localhost:4040` pour une application) pour visualiser le plan d'exécution (DAG) et comparer visuellement les jobs RDD et DataFrame.
+- Explorer l'interface web Spark (`http://localhost:4040` pour l'application en cours, `http://localhost:8088` pour le ResourceManager YARN de l'Atelier 4.1, ou `http://localhost:8080` pour le cluster Standalone alternatif de l'Atelier 3) pour visualiser le plan d'exécution (DAG) et comparer visuellement les jobs RDD et DataFrame.
 - Écrire la question 1 avec `sortByKey()` après avoir inversé clé et valeur, pour observer une autre façon de trier un RDD.
 - Mesurer l'effet de `.repartition()` sur le temps d'exécution d'une agrégation, en augmentant puis en réduisant fortement le nombre de partitions.

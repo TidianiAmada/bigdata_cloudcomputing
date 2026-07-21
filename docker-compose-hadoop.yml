@@ -1,0 +1,99 @@
+# Atelier 4.1 — cluster Hadoop local (HDFS + YARN), sans dépendance à Amazon EMR.
+# Démarrage : docker compose -f docker-compose-hadoop.yml up -d
+# Arrêt     : docker compose -f docker-compose-hadoop.yml down
+
+services:
+  namenode:
+    image: bde2020/hadoop-namenode:2.0.0-hadoop3.2.1-java8
+    container_name: namenode
+    environment:
+      - CLUSTER_NAME=hdfs-yarn-cluster
+      - CORE_CONF_fs_defaultFS=hdfs://namenode:8020
+    ports:
+      - "9870:9870"   # interface web du NameNode
+    volumes:
+      - ./data:/data   # purchases.txt, à déposer ensuite sur HDFS avec hdfs dfs -put
+    networks:
+      - hadoop_net
+
+  datanode1:
+    image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
+    container_name: datanode1
+    environment:
+      - CORE_CONF_fs_defaultFS=hdfs://namenode:8020
+      - SERVICE_PRECONDITION=namenode:9870
+    depends_on:
+      - namenode
+    networks:
+      - hadoop_net
+
+  datanode2:
+    image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
+    container_name: datanode2
+    environment:
+      - CORE_CONF_fs_defaultFS=hdfs://namenode:8020
+      - SERVICE_PRECONDITION=namenode:9870
+    depends_on:
+      - namenode
+    networks:
+      - hadoop_net
+
+  resourcemanager:
+    image: bde2020/hadoop-resourcemanager:2.0.0-hadoop3.2.1-java8
+    container_name: resourcemanager
+    environment:
+      - CORE_CONF_fs_defaultFS=hdfs://namenode:8020
+      - YARN_CONF_yarn_resourcemanager_hostname=resourcemanager
+      - SERVICE_PRECONDITION=namenode:9870 datanode1:9864 datanode2:9864
+    ports:
+      - "8088:8088"   # interface web du ResourceManager
+    depends_on:
+      - namenode
+    networks:
+      - hadoop_net
+
+  nodemanager:
+    build:
+      context: .
+      dockerfile: Dockerfile.nodemanager
+    image: hadoop-nodemanager-py39:2.0.0-hadoop3.2.1-java8
+    container_name: nodemanager
+    environment:
+      - CORE_CONF_fs_defaultFS=hdfs://namenode:8020
+      - YARN_CONF_yarn_resourcemanager_hostname=resourcemanager
+      - YARN_CONF_yarn_nodemanager_aux___services=mapreduce_shuffle
+      - YARN_CONF_yarn_nodemanager_pmem___check___enabled=false
+      - YARN_CONF_yarn_nodemanager_vmem___check___enabled=false
+      - SERVICE_PRECONDITION=resourcemanager:8088
+    depends_on:
+      - resourcemanager
+    networks:
+      - hadoop_net
+
+  spark-client:
+    # Atelier 4.2 — client Spark soumettant ses jobs au ResourceManager (--master yarn),
+    # lisant/écrivant directement sur le HDFS de ce même cluster (Atelier 4.1).
+    build:
+      context: .
+      dockerfile: Dockerfile.spark-client
+    image: spark-client-py39:latest
+    container_name: spark-client
+    command: ["tail", "-f", "/dev/null"]   # conteneur maintenu actif pour y exécuter spark-submit/pyspark à la demande
+    environment:
+      - HADOOP_CONF_DIR=/etc/hadoop/conf
+      - YARN_CONF_DIR=/etc/hadoop/conf
+      - HADOOP_USER_NAME=root   # le conteneur Spark tourne sous un UID sans nom d'utilisateur (185) ; sans cette variable, HDFS refuse l'écriture du répertoire de staging YARN à la racine (/)
+    ports:
+      - "4040:4040"   # Spark UI de l'application en cours (une seule à la fois)
+    volumes:
+      - ./hadoop-conf:/etc/hadoop/conf:ro   # core-site.xml / yarn-site.xml pointant vers ce cluster
+      - ./data:/data
+    depends_on:
+      - resourcemanager
+      - nodemanager
+    networks:
+      - hadoop_net
+
+networks:
+  hadoop_net:
+    driver: bridge

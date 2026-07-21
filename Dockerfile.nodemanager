@@ -1,0 +1,9 @@
+# Atelier 4.2 — NodeManager + Python 3.9 (Miniconda), pour exécuter des workers PySpark sur YARN.
+# bde2020/hadoop-nodemanager est basé sur Debian 9 "stretch" (EOL, dépôts apt archivés) dont le
+# python3 système (3.5) est trop ancien pour PySpark 3.4 (annotations de variables, PEP 526) :
+# Miniconda fournit un Python 3.9 autonome, indépendant des dépôts système.
+FROM bde2020/hadoop-nodemanager:2.0.0-hadoop3.2.1-java8
+
+RUN curl -sL -o /tmp/miniconda.sh https://repo.anaconda.com/miniconda/Miniconda3-py39_23.5.2-0-Linux-x86_64.sh \
+ && bash /tmp/miniconda.sh -b -p /opt/conda \
+ && rm /tmp/miniconda.sh

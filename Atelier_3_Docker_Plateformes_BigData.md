@@ -318,6 +318,8 @@ networks:
 - Pourquoi les conteneurs peuvent-ils se joindre par leur **nom de service** (`spark-master`) plutôt que par une adresse IP ?
 - Que devient la donnée MongoDB si l'on supprime le conteneur mais pas le volume ?
 
+> **Version corrigée et prête à l'emploi.** Le corrigé ([Solution_Atelier_3.md](Solutions/Solution_Atelier_3.md)) détaille le diagnostic complet du `spark-worker` (`AccessDeniedException` sur `/opt/spark/work`, résolue par `--work-dir /tmp/spark-work`, et `--host spark-master` pour fiabiliser l'annonce d'adresse du master). La version finale, avec en plus un volume `./data:/data` pour partager `purchases.txt`, est fournie à la racine du dépôt sous `docker-compose-mongo-spark.yml` — c'est ce fichier que réutilisent directement les Ateliers 4.2 et 5.2 (déposer `purchases.txt` dans un dossier `data/` à côté de ce fichier avant de lancer `docker compose -f docker-compose-mongo-spark.yml up -d`).
+
 ---
 
 ## 4. Synthèse
