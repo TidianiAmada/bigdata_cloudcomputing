@@ -1,0 +1,673 @@
+# Atelier 5.1 — Apache Hive : le Data Warehouse distribué
+
+**Module :** Introduction au Big Data et au Cloud Computing
+**Formation :** Licence Informatique 2 — SupDeCo
+**Enseignant :** M. TOP
+**Durée :** 3 heures
+**Environnement pratique :** Docker (Hive + HDFS + YARN + Metastore PostgreSQL/MySQL)
+
+---
+
+## Objectifs de l'atelier
+
+À l'issue de cet atelier, l'étudiant sera capable de :
+
+- expliquer pourquoi Hive a été créé ;
+- distinguer Hive d'un SGBD relationnel classique ;
+- comprendre l'architecture interne de Hive (Driver, Compiler, Optimizer, Metastore, Execution Engine) ;
+- comprendre le cycle complet d'exécution d'une requête HiveQL ;
+- modéliser une table Hive adaptée à un cas métier, avec les types primitifs et complexes appropriés ;
+- choisir entre table **Managed** et **External** ;
+- optimiser une table grâce au **Partitioning** et au **Bucketing** ;
+- créer des tables Hive et charger des données depuis HDFS ;
+- exécuter des requêtes analytiques et observer leur exécution.
+
+> **Où se situe cet atelier.** HDFS et YARN ont été vus à l'Atelier 4.1, Spark (RDD/DataFrame) à l'Atelier 4.2. Cet atelier introduit Hive en profondeur, avant l'Atelier 5.2 (Spark SQL), afin de comparer, en connaissance de cause, deux façons d'interroger les mêmes données en SQL sur un cluster Hadoop.
+
+---
+
+## Partie I — Introduction à Hive (20 min)
+
+### 1. Pourquoi Hive ?
+
+Avant Hive, analyser plusieurs téraoctets de données stockées sur HDFS imposait d'écrire du code MapReduce en Java :
+
+```text
+Mapper.java
+    │
+Reducer.java
+    │
+Compilation
+    │
+    JAR
+    │
+Soumission
+    │
+Résultat
+```
+
+Plusieurs centaines de lignes de Java, pour un besoin aussi simple que « le total des ventes par magasin ». Hive permet de remplacer tout ce cycle par :
+
+```sql
+SELECT store, SUM(cost) AS total_ventes
+FROM purchases
+GROUP BY store;
+```
+
+**Point essentiel à retenir avant tout le reste** : Hive ne réalise **jamais** lui-même les calculs. Hive **traduit** une requête SQL en un plan d'exécution distribué, confié ensuite à un moteur de calcul (Tez, Spark ou MapReduce).
+
+### 2. Place de Hive dans l'écosystème Hadoop
+
+```text
+                Utilisateur
+                     │
+                  HiveQL
+                     │
+                   Hive
+                     │
+            Tez / Spark / MapReduce
+                     │
+                    YARN
+                     │
+                    HDFS
+```
+
+À retenir dans l'ordre :
+
+- **Hive** = couche SQL (traduit la requête) ;
+- **HDFS** (Atelier 4.1) = stockage des données ;
+- **YARN** (Atelier 4.1) = gestion des ressources ;
+- **Tez / Spark / MapReduce** = moteurs qui exécutent réellement le calcul.
+
+---
+
+## Partie II — Architecture interne (30 min)
+
+Cinq composants gouvernent le cycle de vie d'une requête HiveQL :
+
+```text
+                    Requête HiveQL
+                          │
+                          ▼
+                       Driver ───────────────►  Hive Metastore
+                          │                     (bases, tables, colonnes,
+                          ▼                      partitions, buckets,
+                       Compiler                  statistiques, formats —
+                 (construction de l'AST,          jamais les données)
+                  validation syntaxique
+                  et sémantique)
+                          │
+                          ▼
+                       Optimizer
+        (Cost-Based Optimizer, Predicate Pushdown,
+              Map Join, Partition Pruning)
+                          │
+                          ▼
+                   Execution Engine
+                  (Tez / Spark / MapReduce)
+                          │
+                          ▼
+                        YARN
+                          │
+                          ▼
+                        HDFS
+```
+
+**Driver.** Le chef d'orchestre : il reçoit la requête, pilote son cycle de vie complet (compilation, optimisation, exécution) et renvoie le résultat.
+
+**Compiler.** Construit l'*Abstract Syntax Tree* (AST) de la requête, puis effectue une validation syntaxique (la requête est-elle grammaticalement correcte ?) et une validation sémantique (les tables et colonnes référencées existent-elles réellement, en interrogeant le Metastore ?).
+
+**Optimizer.** Améliore le plan d'exécution avant qu'il ne soit exécuté, notamment via :
+
+- le **Cost-Based Optimizer (CBO)** : choisit le plan le moins coûteux parmi plusieurs possibles, à partir des statistiques du Metastore ;
+- le **Predicate Pushdown** : applique les filtres (`WHERE`) le plus tôt possible, au plus près des données, plutôt qu'après avoir tout lu ;
+- le **Map Join** : charge une petite table en mémoire pour éviter un `JOIN` distribué coûteux ;
+- le **Partition Pruning** : élimine dès la planification les partitions qui ne peuvent pas contenir de résultat (cf. Partie V.3).
+
+**Execution Engine.** Exécute réellement le plan optimisé, sur le cluster :
+
+| Moteur | Statut |
+|---|---|
+| **Apache Tez** | Moteur recommandé par défaut depuis Hive 2.x |
+| **Apache Spark** | Moteur alternatif |
+| **MapReduce** | Historique, conservé principalement pour compatibilité |
+
+> Depuis Hive 2.x, Apache Tez est généralement le moteur recommandé pour les déploiements Hadoop, tandis que Spark peut être utilisé comme moteur alternatif. MapReduce reste principalement présent pour des raisons de compatibilité.
+
+**Hive Metastore.** Catalogue central des métadonnées : bases, tables, colonnes, partitions, buckets, statistiques, formats de fichiers. **Il ne contient jamais les données elles-mêmes** — c'est ce même composant qui sera retrouvé, réutilisé comme catalogue partagé avec Spark SQL, à l'Atelier 5.2.
+
+---
+
+## Partie III — Cycle de vie d'une requête (Data Flow) (25 min)
+
+Le passage d'une requête HiveQL à un résultat suit sept étapes bien identifiées :
+
+```text
+1. Execute Query
+   L'utilisateur (via l'UI, beeline ou Hue) envoie la requête au Driver.
+        │
+        ▼
+2. Get Plan
+   Le Driver transmet la requête au Compiler, qui vérifie la syntaxe
+   et construit un plan préliminaire.
+        │
+        ▼
+3. Get Metadata
+   Le Compiler interroge le Metastore : les tables et colonnes
+   référencées existent-elles ? Quel est leur schéma ?
+        │
+        ▼
+4. Send Metadata
+   Le Metastore répond avec les métadonnées demandées.
+        │
+        ▼
+5. Send Plan
+   Le Compiler valide sémantiquement la requête et renvoie
+   le plan d'exécution complet au Driver.
+        │
+        ▼
+6. Execute Plan
+   Le Driver transmet le plan à l'Execution Engine (Tez/Spark/MR).
+        │
+        ▼
+7. Execute Job puis Fetch Result
+   L'Execution Engine soumet le job à YARN, qui l'exécute sur les
+   DataNodes ; les résultats remontent au Driver, qui les renvoie
+   à l'utilisateur.
+```
+
+*Exercice* : sans regarder le schéma ci-dessus, redessiner de mémoire les sept étapes et leurs flèches, puis comparer avec un binôme.
+
+---
+
+## Partie IV — Types de données (20 min)
+
+### Types primitifs
+
+| Type | Description |
+|---|---|
+| `TINYINT` / `SMALLINT` / `INT` / `BIGINT` | Entiers de précision croissante (1, 2, 4, 8 octets) |
+| `FLOAT` | Nombre à virgule flottante, simple précision |
+| `DOUBLE` | Nombre à virgule flottante, double précision |
+| `DECIMAL` | Nombre décimal de précision fixe (calculs financiers) |
+| `STRING` | Chaîne de caractères de longueur non déclarée |
+| `VARCHAR(n)` | Chaîne de longueur maximale déclarée (1 à 65 355) |
+| `CHAR(n)` | Chaîne de longueur fixe |
+| `BOOLEAN` | Valeur `TRUE` / `FALSE` |
+| `DATE` | Date seule (`yyyy-MM-dd`) |
+| `TIMESTAMP` | Date et heure, précision à la nanoseconde |
+| `BINARY` | Données binaires brutes |
+
+Points de vigilance :
+
+- **`STRING` vs `VARCHAR`** : `STRING` ne nécessite pas de déclarer de longueur maximale et est généralement préféré ; `VARCHAR` existe surtout pour la compatibilité avec d'autres systèmes SQL.
+- **`FLOAT` vs `DOUBLE`** : `DOUBLE` offre une précision supérieure, au prix d'un espace de stockage plus important — à privilégier dès que la précision compte (montants, par exemple).
+- **`DATE`** ne contient aucune information d'heure ; **`TIMESTAMP`** combine date et heure.
+- **`BOOLEAN`** est stocké de façon compacte mais reste peu utilisé dans les entrepôts analytiques, où l'on préfère souvent des indicateurs numériques agrégeables.
+
+### Types complexes
+
+| Type | Description | Exemple |
+|---|---|---|
+| `ARRAY<type>` | Collection ordonnée d'éléments de même type | `ARRAY<STRING>` |
+| `MAP<clé, valeur>` | Ensemble de paires clé-valeur | `MAP<STRING, STRING>` |
+| `STRUCT<champ:type, ...>` | Regroupement de champs nommés, éventuellement de types différents | `STRUCT<ville:STRING, code_postal:STRING>` |
+| `UNIONTYPE<...>` | Valeur pouvant prendre l'un de plusieurs types (présentation uniquement — rarement utilisé en pratique) | — |
+
+```sql
+CREATE TABLE clients (
+    id INT,
+    nom STRING,
+    historique_achats ARRAY<STRING>,
+    contacts MAP<STRING, STRING>,
+    adresse STRUCT<rue:STRING, ville:STRING, code_postal:STRING>
+);
+
+-- Accéder au premier élément d'un tableau
+SELECT historique_achats[0] FROM clients;
+
+-- Accéder à un champ d'une structure
+SELECT adresse.ville FROM clients;
+
+-- Accéder à une valeur d'une map par sa clé
+SELECT contacts["email"] FROM clients;
+```
+
+Ces exemples montrent que les types complexes restent réellement exploitables en SQL, avec une syntaxe d'accès dédiée (`[index]` pour un `ARRAY`, `.champ` pour un `STRUCT`, `["clé"]` pour une `MAP`).
+
+---
+
+## Partie V — Data Modeling (40 min)
+
+C'est la partie la plus importante de l'atelier.
+
+### 1. Managed Table (table interne)
+
+Hive **possède** les données : elles sont stockées dans le répertoire de l'entrepôt Hive (par défaut `/user/hive/warehouse/<base>.db/<table>`).
+
+```text
+CREATE TABLE (Managed)
+        │
+        ▼
+Répertoire de l'entrepôt Hive
+(/user/hive/warehouse/achatdb.db/purchases_managed)
+        │
+        ▼
+DROP TABLE → supprime les métadonnées ET les données
+```
+
+```sql
+CREATE TABLE achatdb.purchases_managed (
+    pdate    DATE,
+    ptime    STRING,
+    store    STRING,
+    product  STRING,
+    cost     FLOAT,
+    payment  STRING
+)
+ROW FORMAT DELIMITED FIELDS TERMINATED BY '\t'
+STORED AS TEXTFILE;
+```
+
+### 2. External Table
+
+Hive **référence** des données situées ailleurs sur HDFS (clause `LOCATION`), sans en devenir propriétaire — c'est l'approche utilisée dans les *data lakes*, où un même fichier brut est partagé entre plusieurs outils (Hive, Spark, autres).
+
+> **Rappel.** À l'Atelier 4.1, la table `achatdb.purchases` a été créée avec une clause `LOCATION` pointant directement vers des données déjà présentes sur HDFS (`/data/raw`) — sans le nommer explicitement à l'époque, c'était déjà une External Table.
+
+```sql
+CREATE EXTERNAL TABLE achatdb.purchases_external (
+    pdate    DATE,
+    ptime    STRING,
+    store    STRING,
+    product  STRING,
+    cost     FLOAT,
+    payment  STRING
+)
+ROW FORMAT DELIMITED FIELDS TERMINATED BY '\t'
+STORED AS TEXTFILE
+LOCATION '/data/raw';
+```
+
+| | Managed | External |
+|---|---|---|
+| Propriété des données | Hive possède les données | Hive référence les données |
+| Effet de `DROP TABLE` | Supprime les métadonnées **et** les données | Supprime uniquement les métadonnées, les données restent |
+| Usage typique | Tables de travail, résultats intermédiaires | Données brutes partagées (*data lake*), sources externes |
+
+### 3. Partitioning
+
+**Sans partition**, une requête filtrant sur `store` doit lire l'intégralité du fichier, magasin par magasin, pour ne retenir que les lignes voulues :
+
+```text
+Sans partition :
+/data/raw/purchases.txt   (un seul fichier — scan complet à chaque requête,
+                            même pour ne récupérer qu'un seul magasin)
+```
+
+**Avec partition** (par exemple par `store`), Hive organise physiquement les données en un sous-répertoire par valeur de la colonne de partition :
+
+```text
+Avec partition (par store) :
+/warehouse/purchases_partitioned/store=Tampa/...
+/warehouse/purchases_partitioned/store=San Jose/...
+/warehouse/purchases_partitioned/store=Chicago/...
+```
+
+```sql
+CREATE TABLE achatdb.purchases_partitioned (
+    pdate    DATE,
+    ptime    STRING,
+    product  STRING,
+    cost     FLOAT,
+    payment  STRING
+)
+PARTITIONED BY (store STRING)
+ROW FORMAT DELIMITED FIELDS TERMINATED BY '\t'
+STORED AS TEXTFILE;
+
+SET hive.exec.dynamic.partition.mode = nonstrict;
+
+INSERT INTO TABLE achatdb.purchases_partitioned PARTITION (store)
+SELECT pdate, ptime, product, cost, payment, store
+FROM achatdb.purchases_managed;
+```
+
+Une requête filtrant sur `store` (`WHERE store = 'Tampa'`) ne lit alors **que** le sous-répertoire correspondant — c'est le **Partition Pruning** évoqué au §Optimizer (Partie II).
+
+*Exercice* : comparer, avec `EXPLAIN`, le plan d'exécution de la même requête filtrée par magasin sur `purchases_managed` (non partitionnée) et sur `purchases_partitioned` — repérer, dans la sortie, la mention des partitions effectivement lues.
+
+### 4. Bucketing
+
+Le bucketing intervient **à l'intérieur** d'une partition (ou de la table entière si elle n'est pas partitionnée) : il répartit les lignes dans un nombre fixe de fichiers, selon une fonction de hachage appliquée à une colonne.
+
+```text
+Hash(store)
+     │
+     ▼
+  Bucket (0 à N-1)
+     │
+     ▼
+Fichier ORC
+```
+
+```sql
+CREATE TABLE achatdb.purchases_bucketed (
+    pdate    DATE,
+    ptime    STRING,
+    store    STRING,
+    product  STRING,
+    cost     FLOAT,
+    payment  STRING
+)
+CLUSTERED BY (store) INTO 4 BUCKETS
+STORED AS ORC;
+
+SET hive.enforce.bucketing = true;
+
+INSERT INTO TABLE achatdb.purchases_bucketed
+SELECT * FROM achatdb.purchases_managed;
+```
+
+Le bucketing améliore les performances de jointure (deux tables bucketées sur la même clé et le même nombre de buckets peuvent être jointes bucket par bucket, sans mélanger l'ensemble des données) et permet un échantillonnage efficace (`TABLESAMPLE`) sans lire la table entière.
+
+### 5. Formats de stockage
+
+| Format | Avantage principal |
+|---|---|
+| **TEXTFILE** | Simplicité, lisible directement, aucun outil requis pour l'inspecter |
+| **CSV** (via un SerDe dédié) | Format d'échange universel avec d'autres outils |
+| **AVRO** | Sérialisation orientée ligne, bonne gestion de l'évolution de schéma |
+| **ORC** | Format colonnaire optimisé spécifiquement pour Hive (compression, statistiques intégrées) |
+| **PARQUET** | Format colonnaire optimisé pour l'écosystème Spark, largement interopérable |
+
+---
+
+## Partie VI — Modes d'exécution (20 min)
+
+```text
+Local
+  │
+  └── Pas de YARN — exécution directe sur le nœud maître,
+      adaptée aux petits jeux de données de test.
+
+Distributed
+  │
+  └── YARN
+        │
+        └── Tez
+              │
+              └── HDFS
+```
+
+*Exercice* : exécuter la même requête d'agrégation en forçant le mode local (`SET hive.exec.mode.local.auto = true;` sur un échantillon réduit) puis en mode distribué, et comparer les temps d'exécution affichés en fin de requête.
+
+---
+
+## Partie VII — Hive vs RDBMS (20 min)
+
+| | Hive | PostgreSQL (RDBMS classique) |
+|---|---|---|
+| Rôle historique | Interroger HDFS en SQL | Moteur de traitement distribué généraliste |
+| Clés primaires / étrangères | Non imposées | Imposées et vérifiées |
+| Accès aux données | Scan massif (parfois atténué par partitioning/bucketing) | Index |
+| Traitement | Par lots (*batch*) | Temps réel |
+| Scalabilité | Horizontale (*scale-out*) | Verticale (*scale-up*) |
+
+**À retenir avant tout le reste de cette section** : Hive est un moteur **analytique**, pas un moteur **transactionnel**. Il n'est pas conçu pour des mises à jour ligne à ligne fréquentes ni pour garantir des contraintes d'intégrité référentielle — c'est un entrepôt de données interrogé par lots, pas une base de données de production.
+
+---
+
+## Partie VIII — Atelier pratique Docker (1 h 30)
+
+> **Environnement.** Cet atelier utilise un environnement Docker dédié à Hive (distinct de la plateforme MongoDB + Spark de l'Atelier 3), comprenant HDFS (NameNode, DataNode), YARN et Hive (Metastore adossé à PostgreSQL, HiveServer2). Un exemple d'orchestration, basé sur les images `bde2020/hadoop-*` et `bde2020/hive` largement utilisées à des fins pédagogiques :
+
+```yaml
+version: "3.8"
+
+services:
+  namenode:
+    image: bde2020/hadoop-namenode:2.0.0-hadoop3.2.1-java8
+    container_name: namenode
+    environment:
+      - CLUSTER_NAME=hive-cluster
+    ports:
+      - "9870:9870"
+    networks:
+      - hive_net
+
+  datanode:
+    image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
+    container_name: datanode
+    environment:
+      - SERVICE_PRECONDITION=namenode:9870
+    depends_on:
+      - namenode
+    networks:
+      - hive_net
+
+  hive-metastore-postgresql:
+    image: bde2020/hive-metastore-postgresql:2.3.0
+    container_name: hive-metastore-postgresql
+    networks:
+      - hive_net
+
+  hive-metastore:
+    image: bde2020/hive:2.3.2-postgresql-metastore
+    container_name: hive-metastore
+    command: /opt/hive/bin/hive --service metastore
+    environment:
+      - SERVICE_PRECONDITION=hive-metastore-postgresql:5432
+    depends_on:
+      - hive-metastore-postgresql
+    networks:
+      - hive_net
+
+  hive-server:
+    image: bde2020/hive:2.3.2-postgresql-metastore
+    container_name: hive-server
+    environment:
+      - SERVICE_PRECONDITION=hive-metastore:9083
+    ports:
+      - "10000:10000"
+    depends_on:
+      - hive-metastore
+    networks:
+      - hive_net
+
+networks:
+  hive_net:
+    driver: bridge
+```
+
+> **Note.** Les tags d'image évoluent avec le temps ; vérifier leur disponibilité avant la séance et ajuster si nécessaire (cf. la remarque similaire sur les images Spark à l'Atelier 3).
+
+### TP1 — Découvrir le cluster
+
+```bash
+docker compose ps
+```
+
+### TP2 — Entrer dans le conteneur Hive
+
+```bash
+docker exec -it hive-server bash
+```
+
+### TP3 — Se connecter à Hive
+
+```bash
+beeline -u jdbc:hive2://localhost:10000
+```
+
+### TP4 — Créer une base
+
+```sql
+CREATE DATABASE IF NOT EXISTS achatdb;
+USE achatdb;
+```
+
+### TP5 — Créer une table Managed
+
+```sql
+CREATE TABLE purchases_managed (
+    pdate    DATE,
+    ptime    STRING,
+    store    STRING,
+    product  STRING,
+    cost     FLOAT,
+    payment  STRING
+)
+ROW FORMAT DELIMITED FIELDS TERMINATED BY '\t'
+STORED AS TEXTFILE;
+```
+
+### TP6 — Créer une External Table
+
+```sql
+CREATE EXTERNAL TABLE purchases_external (
+    pdate    DATE,
+    ptime    STRING,
+    store    STRING,
+    product  STRING,
+    cost     FLOAT,
+    payment  STRING
+)
+ROW FORMAT DELIMITED FIELDS TERMINATED BY '\t'
+STORED AS TEXTFILE
+LOCATION '/data/raw';
+```
+
+### TP7 — Charger `purchases.txt` dans la table Managed
+
+Contrairement à l'External Table (TP6), qui référence des données déjà présentes sur HDFS, la table Managed reçoit ici une copie du fichier local :
+
+```sql
+LOAD DATA LOCAL INPATH '/tmp/purchases.txt'
+INTO TABLE purchases_managed;
+```
+
+### TP8 — Créer une table partitionnée
+
+```sql
+CREATE TABLE purchases_partitioned (
+    pdate    DATE,
+    ptime    STRING,
+    product  STRING,
+    cost     FLOAT,
+    payment  STRING
+)
+PARTITIONED BY (store STRING)
+ROW FORMAT DELIMITED FIELDS TERMINATED BY '\t'
+STORED AS TEXTFILE;
+
+SET hive.exec.dynamic.partition.mode = nonstrict;
+
+INSERT INTO TABLE purchases_partitioned PARTITION (store)
+SELECT pdate, ptime, product, cost, payment, store
+FROM purchases_managed;
+```
+
+### TP9 — Créer une table bucketisée
+
+```sql
+CREATE TABLE purchases_bucketed (
+    pdate    DATE,
+    ptime    STRING,
+    store    STRING,
+    product  STRING,
+    cost     FLOAT,
+    payment  STRING
+)
+CLUSTERED BY (store) INTO 4 BUCKETS
+STORED AS ORC;
+
+SET hive.enforce.bucketing = true;
+
+INSERT INTO TABLE purchases_bucketed
+SELECT * FROM purchases_managed;
+```
+
+### TP10 — Comparer les performances
+
+**Sans partition** (table `purchases_managed`, scan complet) :
+
+```sql
+SELECT SUM(cost) FROM purchases_managed WHERE store = 'Tampa';
+```
+
+**Avec partition** (table `purchases_partitioned`, un seul sous-répertoire lu) :
+
+```sql
+SELECT SUM(cost) FROM purchases_partitioned WHERE store = 'Tampa';
+```
+
+**Avec bucketing** (table `purchases_bucketed`, jointure ou échantillonnage sur `store`) :
+
+```sql
+SELECT SUM(cost)
+FROM purchases_bucketed TABLESAMPLE(BUCKET 1 OUT OF 4 ON store)
+WHERE store = 'Tampa';
+```
+
+*Exercice* : comparer, pour chacune des trois requêtes, le temps d'exécution affiché par `beeline` en fin de requête, et — si le moteur le permet — le nombre de fichiers/partitions effectivement lus (`EXPLAIN` devant chaque requête). Les étudiants doivent constater directement pourquoi le partitioning et le bucketing existent, plutôt que de l'admettre sur parole.
+
+---
+
+## Synthèse
+
+```text
+                    HDFS
+              stocke les fichiers
+                     │
+──────────────────────────────────────
+                    Hive
+           ajoute un schéma SQL
+                     │
+──────────────────────────────────────
+                Metastore
+        mémorise les métadonnées
+                     │
+──────────────────────────────────────
+            Driver + Optimizer
+          construisent le plan
+                     │
+──────────────────────────────────────
+              Tez / Spark / MR
+             exécutent le calcul
+                     │
+──────────────────────────────────────
+                    YARN
+           fournit CPU et mémoire
+```
+
+- Hive ne calcule jamais lui-même : il traduit HiveQL en un plan d'exécution confié à un moteur (Tez, Spark ou MapReduce), lui-même exécuté via YARN sur des données stockées sur HDFS.
+- Driver, Compiler, Optimizer, Metastore et Execution Engine sont les cinq composants dont il faut connaître le rôle précis — en particulier que le Metastore ne stocke jamais les données, seulement leurs métadonnées.
+- Managed et External Tables se distinguent par la propriété des données et l'effet de `DROP TABLE` ; Partitioning et Bucketing sont deux mécanismes d'optimisation complémentaires (l'un au niveau des répertoires, l'autre au niveau des fichiers à l'intérieur d'une partition).
+- Hive reste un moteur analytique par lots, pas un moteur transactionnel : pas de clés primaires/étrangères imposées, pas d'index au sens SGBDR classique, scalabilité horizontale plutôt que verticale.
+
+### Ouverture — Hive et Spark : deux approches complémentaires (10 min)
+
+| | Hive | Spark SQL (Atelier 5.2) |
+|---|---|---|
+| Interface | SQL déclaratif | SQL et API DataFrame |
+| Usage principal | Analytique et entrepôt de données | Traitements analytiques, ETL et Machine Learning |
+| Optimisation | Pour les requêtes sur données stockées | Pour les traitements distribués en mémoire |
+| Metastore | S'appuie sur le Hive Metastore | Peut réutiliser le même Hive Metastore |
+| Exécution | Via Tez, Spark ou MapReduce | Via le moteur Spark |
+
+Ce tableau prépare directement l'Atelier 5.2 : les mêmes questions métier posées sur `purchases.txt` (ventes par magasin, par tranche horaire, par mode de paiement, taux cash/électronique) y seront reformulées en Spark SQL, sur le même Metastore.
+
+---
+
+## Pour aller plus loin
+
+- Comparer le temps d'exécution d'une même agrégation entre le format `TEXTFILE` et le format `ORC` sur `purchases_bucketed`.
+- Explorer `EXPLAIN FORMATTED` pour visualiser le plan d'exécution complet (y compris le choix du CBO) d'une requête avec jointure.
+- Étudier les vues matérialisées Hive (*materialized views*) comme mécanisme d'accélération complémentaire au partitioning/bucketing.
+
+### Bibliographie
+
+- Capriolo, E., Wampler, D., & Rutherglen, J. (2012). *Programming Hive*. O'Reilly.
+- Apache Hive. *Hive Language Manual*. https://cwiki.apache.org/confluence/display/Hive/LanguageManual
+- White, T. (2021). *Hadoop: The Definitive Guide*. O'Reilly.

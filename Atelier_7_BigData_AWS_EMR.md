@@ -12,7 +12,7 @@
 - comprendre pourquoi un traitement Big Data nécessite un cluster plutôt qu'une machine unique ;
 - comprendre l'architecture d'Amazon EMR (nœud maître, nœuds de calcul) ;
 - déployer un cluster EMR intégrant Spark et Zeppelin (ou Hive) ;
-- exécuter, sur un cluster réel, les traitements RDD, DataFrame, Spark SQL (Atelier 4-5) et Hive (Atelier 5) déjà écrits sur `purchases.txt` ;
+- exécuter, sur un cluster réel, les traitements HDFS (Atelier 4.1), RDD/DataFrame (Atelier 4.2), Hive (Atelier 5.1) et Spark SQL (Atelier 5.2) déjà écrits sur `purchases.txt` ;
 - comprendre les grands principes de coût et les bonnes pratiques d'utilisation ;
 - situer le rôle d'un outil de visualisation (Amazon QuickSight) dans le pipeline Big Data complet.
 
@@ -27,7 +27,7 @@ Cet atelier constitue l'aboutissement du projet fil rouge : il reprend, sur un c
 Même une instance EC2 très puissante reste une seule machine : sa RAM et son nombre de cœurs sont plafonnés, et une panne la rend totalement indisponible. Un **cluster** répartit le stockage et le calcul sur plusieurs machines, ce qui apporte trois bénéfices complémentaires à ce qui a été vu dans le module :
 
 - **scalabilité horizontale** : on augmente la capacité en ajoutant des nœuds plutôt qu'en changeant de machine (cf. Atelier 1) ;
-- **parallélisme réel** : les traitements Spark et Hive (Ateliers 4-5) s'exécutent simultanément sur plusieurs nœuds ;
+- **parallélisme réel** : les traitements Hive, Spark RDD/DataFrame et Spark SQL (Ateliers 4.2, 5.1 et 5.2) s'exécutent simultanément sur plusieurs nœuds ;
 - **résilience** : la perte d'un nœud ne compromet pas l'ensemble du traitement.
 
 ### 1.2 Amazon EMR : présentation
@@ -63,7 +63,7 @@ Même une instance EC2 très puissante reste une seule machine : sa RAM et son n
 
 ### 1.4 Intégration avec Spark, Hive et S3
 
-Sur EMR, Spark s'exécute avec **YARN** comme gestionnaire de cluster (au lieu du mode Standalone utilisé en local à l'Atelier 4), et Hive partage le même Hive Metastore que celui potentiellement utilisé par Spark SQL (Atelier 5). Les traitements lisent typiquement leurs données depuis **HDFS** (pour les traitements internes au cluster) ou directement depuis **Amazon S3** (pour séparer durablement le stockage du calcul) : on peut ainsi supprimer un cluster EMR sans perdre les données, puisqu'elles résident sur S3 indépendamment du cluster.
+Sur EMR, Spark s'exécute avec **YARN** comme gestionnaire de cluster (le même YARN que celui présenté à l'Atelier 4.1, au lieu du mode Standalone utilisé en local à l'Atelier 4.2), et Hive (Atelier 5.1) partage le même Hive Metastore que celui potentiellement utilisé par Spark SQL (Atelier 5.2). Les traitements lisent typiquement leurs données depuis **HDFS** (pour les traitements internes au cluster) ou directement depuis **Amazon S3** (pour séparer durablement le stockage du calcul) : on peut ainsi supprimer un cluster EMR sans perdre les données, puisqu'elles résident sur S3 indépendamment du cluster.
 
 ```text
 S3 (purchases.txt)  →  Cluster EMR (Spark / Hive)  →  S3 (résultats : rq5, rq7, rq8, rq9)
@@ -86,12 +86,12 @@ hdfs dfs -put purchases.txt /user/hadoop/purchases.txt
 
 Deux variantes de cluster sont utilisées selon l'outil ciblé (elles peuvent être déployées successivement ou en parallèle par des groupes différents) :
 
-**Cluster « Spark + Zeppelin »** (reprise des traitements RDD/DataFrame/SQL de l'Atelier 4) :
+**Cluster « Spark + Zeppelin »** (reprise des traitements RDD/DataFrame de l'Atelier 4.2 et Spark SQL de l'Atelier 5.2) :
 - Nom : `TP Spark EMR`, version EMR 7.1 ou supérieure.
 - Applications : **Spark**, **Zeppelin**.
 - Matériel : 1 nœud maître (Primaire) + 2 nœuds core (Unités principales), type d'instance `m4.large`.
 
-**Cluster « Hive »** (reprise des traitements HiveQL de l'Atelier 5) :
+**Cluster « Hive »** (reprise des traitements HDFS de l'Atelier 4.1 et HiveQL de l'Atelier 5.1) :
 - Nom : `TP Hive EMR`.
 - Applications : **Hive**, **Hue** (pour l'interface de requêtage).
 - Matériel : 1 nœud maître + 2 nœuds core.
@@ -119,7 +119,7 @@ Une fois le cluster actif, plusieurs interfaces web sont accessibles (en rempla�
 
 ### 2.4 Reprise des traitements RDD / DataFrame (cluster Spark + Zeppelin)
 
-Connexion SSH au nœud maître, puis lancement du shell PySpark pour la partie RDD (identique à l'Atelier 4, Partie A) :
+Connexion SSH au nœud maître, puis lancement du shell PySpark pour la partie RDD (identique à l'Atelier 4.2, Partie A) :
 
 ```bash
 pyspark
@@ -135,7 +135,7 @@ sales_by_store = parsed.map(lambda f: (f[2], float(f[4]))) \
 sales_by_store.collect()
 ```
 
-Dans un notebook **Zeppelin**, reprise de la partie DataFrame et Spark SQL (Ateliers 4 et 5, Parties B et 3) :
+Dans un notebook **Zeppelin**, reprise de la partie DataFrame (Atelier 4.2) et Spark SQL (Atelier 5.2) :
 
 ```python
 schema = "pdate DATE, ptime STRING, store STRING, product STRING, cost DOUBLE, payment STRING"
@@ -152,7 +152,7 @@ spark.sql("""
 
 ### 2.5 Reprise des traitements Hive (cluster Hive)
 
-Sur le cluster Hive, connexion à `beeline` (ou à Hue) et exécution des requêtes de l'Atelier 5, Partie 1 (création de `achatdb.purchases`, requêtes rq5, rq7, rq8, rq9).
+Sur le cluster Hive, connexion à `beeline` (ou à Hue) et exécution des requêtes de l'Atelier 5.1 (création de `achatdb.purchases` en Managed/External/partitionnée/bucketisée, requêtes 1 à 4).
 
 ### 2.6 Écriture des résultats sur S3
 
@@ -184,7 +184,7 @@ Ou depuis la console : bouton *Terminate*.
 
 1. Déployer un cluster EMR (Spark + Zeppelin, ou Hive selon le groupe).
 2. Charger `purchases.txt` depuis S3 vers HDFS.
-3. Reproduire au moins deux des quatre traitements déjà écrits aux Ateliers 4 et 5 (RDD ou DataFrame ou SQL ou HiveQL) et vérifier que les résultats sont identiques à ceux obtenus en local.
+3. Reproduire au moins deux des quatre traitements déjà écrits aux Ateliers 4.2, 5.1 et 5.2 (HiveQL, RDD, DataFrame ou Spark SQL) et vérifier que les résultats sont identiques à ceux obtenus précédemment.
 4. Écrire un résultat sur S3 et vérifier son contenu.
 5. **Terminer le cluster** dès l'exercice achevé.
 
@@ -238,7 +238,7 @@ Le stockage S3 est facturé séparément, indépendamment de la durée de vie du
 
 - Un cluster répond aux limites d'une machine unique en distribuant stockage et calcul, avec une meilleure résilience.
 - Amazon EMR automatise le déploiement d'un cluster Big Data managé (Spark, Zeppelin, Hive, Hue), reproduisant dans le Cloud l'environnement construit manuellement en local depuis l'Atelier 3.
-- Les traitements RDD, DataFrame, Spark SQL et HiveQL écrits aux Ateliers 4 et 5 sur `purchases.txt` s'exécutent, sans modification de logique, sur un cluster EMR réel.
+- Les traitements HiveQL, RDD, DataFrame et Spark SQL écrits aux Ateliers 4.2, 5.1 et 5.2 sur `purchases.txt` s'exécutent, sans modification de logique, sur un cluster EMR réel.
 - La séparation entre stockage (S3, durable) et calcul (cluster EMR, temporaire et facturé à l'usage) est le principe économique central du Big Data dans le Cloud, complété par des outils d'analyse et de visualisation (QuickSight, Athena) qui referment le pipeline ouvert à l'Atelier 1.
 
 ---
@@ -252,10 +252,16 @@ purchases.txt
 Docker (Atelier 3, socle transversal) ──► MongoDB (Atelier 2, NoSQL)
       │
       ▼
-Spark : RDD puis DataFrame (Atelier 4)
+HDFS + YARN (Atelier 4.1)
       │
       ▼
-Spark SQL et Hive (Atelier 5)
+Spark : RDD puis DataFrame (Atelier 4.2)
+      │
+      ▼
+Hive (Atelier 5.1) ── achatdb.purchases, requêtes HiveQL
+      │
+      ▼
+Spark SQL (Atelier 5.2)
       │
       ▼
 Amazon S3 (Atelier 6)
@@ -267,7 +273,7 @@ Amazon EMR : mêmes traitements à l'échelle (Atelier 7)
 Résultats (rq5, rq7, rq8, rq9) → Analyse et visualisation (QuickSight / Athena)
 ```
 
-Chaque étudiant doit être en mesure d'expliquer, pour chaque brique du projet, quelle limite technique elle vient résoudre par rapport à l'étape précédente, et de retrouver un même résultat métier (par exemple le classement des magasins par chiffre d'affaires) obtenu par quatre méthodes différentes : RDD, DataFrame, Spark SQL, HiveQL.
+Chaque étudiant doit être en mesure d'expliquer, pour chaque brique du projet, quelle limite technique elle vient résoudre par rapport à l'étape précédente, et de retrouver un même résultat métier (par exemple le classement des magasins par chiffre d'affaires) obtenu par quatre méthodes différentes : HiveQL, RDD, DataFrame, Spark SQL.
 
 ---
 

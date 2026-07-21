@@ -61,7 +61,7 @@ networks:
     driver: bridge
 ```
 
-(`purchases.txt` est placé dans `./data` pour être exploité directement à l'Atelier 4, via `/data/purchases.txt` dans le conteneur.)
+(`purchases.txt` est placé dans `./data` pour être exploité directement à l'Atelier 4.2 (Spark RDD/DataFrame), via `/data/purchases.txt` dans le conteneur.)
 
 ---
 
@@ -208,4 +208,4 @@ docker exec mongodb mongosh --eval "db.getSiblingDB('testdb').demo.find()"
 - `docker compose up -d` est idempotent : sans changement dans le fichier, il ne fait que constater que tout tourne déjà.
 - La résolution de noms entre conteneurs d'un même réseau Compose repose sur un DNS interne à Docker, ce qui évite de coder en dur des adresses IP volatiles.
 - Un volume nommé découple la durée de vie des données de celle du conteneur qui les utilise — c'est ce qui rend un redéploiement (mise à jour d'image, correction de configuration) sans perte de données.
-- Cette même plateforme (MongoDB + Spark standalone), avec `purchases.txt` monté dans `./data`, sert de socle direct à l'Atelier 4.
+- Cette même plateforme (MongoDB + Spark standalone), avec `purchases.txt` monté dans `./data`, sert de socle direct à l'Atelier 4.2 (Spark RDD/DataFrame).

@@ -1,11 +1,8 @@
-# Atelier 4 — Traitement distribué avec Apache Spark
+# Atelier 4.2 — Traitement distribué avec Apache Spark (RDD et DataFrame)
 
 **Module :** Introduction au Big Data et au Cloud Computing
-
 **Formation :** Licence Informatique 2 — SupDeCo
-
 **Enseignant :** M. TOP
-
 **Durée :** 3 heures
 
 ---
@@ -13,15 +10,18 @@
 ## Objectifs de l'atelier
 
 - comprendre les limites du traitement classique (mono-machine) face à de gros volumes ;
-- comprendre l'architecture générale d'Apache Spark (Driver, Executors, cluster manager) ;
+- comprendre l'architecture générale d'Apache Spark (Driver, Executors, cluster manager) et son intégration avec YARN ;
+- distinguer transformations et actions, et comprendre le principe de l'évaluation paresseuse (*lazy evaluation*) et du DAG d'exécution ;
 - distinguer RDD et DataFrame et savoir passer de l'un à l'autre ;
-- écrire, sur le jeu de données fil rouge `purchases.txt`, les mêmes traitements d'abord avec l'API **RDD**, puis avec l'API **DataFrame**, afin de comparer les deux approches.
+- comprendre le rôle du partitionnement et du cache dans la performance d'un traitement Spark ;
+- écrire, sur le jeu de données fil rouge `purchases.txt`, les mêmes traitements d'abord avec l'API **RDD**, puis avec l'API **DataFrame**, afin de comparer les deux approches ;
+- lire un plan d'exécution dans l'interface Spark UI.
 
-> Cet atelier reprend, avec Spark, exactement les traitements réalisés avec Hive à l'Atelier 5 — l'objectif est de mesurer, sur un même jeu de données et un même besoin métier, ce qu'apportent différents niveaux d'abstraction (RDD bas niveau, DataFrame, puis SQL).
+> **Prérequis.** Cet atelier suppose que les données sont déjà stockées dans HDFS, conformément à l'Atelier 4.1 (`/data/raw/purchases.txt`), et que les notions de NameNode/DataNodes et de YARN (ResourceManager, NodeManager, ApplicationMaster, Container) y ont été vues. Spark ne remplace ni HDFS ni YARN : il s'exécute **comme moteur de calcul** au-dessus de ce cluster, en lisant des données sur HDFS et en négociant ses ressources auprès de YARN.
 
 ---
 
-## 1. Rappel théorique (30 min)
+## 1. Rappel théorique (30–40 min)
 
 ### 1.1 Limites du traitement classique
 
@@ -38,6 +38,8 @@ Le paradigme **MapReduce**, popularisé par Hadoop, a été la première répons
 Apache Spark reprend cette même logique de distribution (données + calcul répartis sur le cluster, tolérance aux pannes) mais privilégie le traitement **en mémoire** entre les étapes, ce qui le rend nettement plus rapide que le MapReduce historique — en particulier pour les traitements itératifs ou enchaînant plusieurs transformations, comme ceux réalisés dans cet atelier.
 
 ### 1.3 Architecture Spark
+
+Vue générale, indépendante du gestionnaire de ressources utilisé :
 
 ```text
                 ┌───────────────┐
@@ -56,7 +58,27 @@ Apache Spark reprend cette même logique de distribution (données + calcul rép
 
 - **Driver** : processus qui exécute le code principal (`main`), construit le plan d'exécution et distribue les tâches.
 - **Executors** : processus déployés sur les nœuds du cluster, qui exécutent réellement les tâches et stockent les données en mémoire ou sur disque.
-- **Cluster Manager** : composant responsable de l'allocation des ressources (CPU, mémoire) aux executors. Dans notre environnement Docker, on utilise le mode **Standalone** ; sur Amazon EMR (Atelier 7), on retrouvera Spark piloté par **YARN**.
+- **Cluster Manager** : composant responsable de l'allocation des ressources (CPU, mémoire) aux executors. Dans notre environnement Docker (Atelier 3), on utilise le mode **Standalone** ; sur un cluster Hadoop/EMR, ce rôle est tenu par **YARN**.
+
+**Sur YARN** (celui vu à l'Atelier 4.1), l'architecture se précise ainsi :
+
+```text
+            Spark Application
+                   Driver
+                      │
+                    YARN
+       (ResourceManager négocie,
+        ApplicationMaster coordonne)
+                      │
+      ┌───────────────┴───────────────┐
+      │                               │
+ NodeManager                     NodeManager
+      │                               │
+  Executor                        Executor
+ (dans un Container)            (dans un Container)
+```
+
+Le Driver Spark négocie ses ressources auprès du **ResourceManager** de YARN (§1.12 de l'Atelier 4.1) via un **ApplicationMaster** dédié à l'application Spark ; chaque **Executor** s'exécute ensuite dans un **Container**, sur un nœud géré par un **NodeManager**. C'est exactement le même vocabulaire YARN que celui introduit à l'Atelier 4.1, appliqué cette fois à une application Spark plutôt qu'à une requête Hive.
 
 ### 1.4 RDD (Resilient Distributed Dataset)
 
@@ -81,7 +103,78 @@ Le DataFrame est une abstraction de plus haut niveau : une collection de donnée
 
 Dans cet atelier, les deux API sont mises en œuvre sur le **même jeu de données et les mêmes questions**, afin d'observer concrètement cet écart de niveau d'abstraction.
 
-### 1.6 Commandes et API à connaître
+### 1.6 Transformations, actions et évaluation paresseuse
+
+Toute opération Spark appartient à l'une de ces deux catégories :
+
+- une **transformation** décrit une nouvelle collection à partir d'une collection existante, sans rien exécuter immédiatement (`map`, `filter`, `groupBy`...) ;
+- une **action** déclenche réellement l'exécution du calcul et renvoie un résultat au Driver (`collect`, `count`, `take`...).
+
+| Transformations | Actions |
+|---|---|
+| `map` | `collect` |
+| `filter` | `count` |
+| `groupBy` | `take` |
+| `flatMap` | `first` |
+| `reduceByKey` | `save…` (ex. `saveAsTextFile`) |
+
+Spark ne calcule **rien** tant qu'aucune action n'est appelée : c'est l'**évaluation paresseuse** (*lazy evaluation*). Chaque transformation est seulement enregistrée dans un plan, et c'est l'action qui déclenche la construction puis l'exécution d'un **DAG** (*Directed Acyclic Graph*, graphe orienté acyclique) décrivant l'enchaînement optimal des étapes :
+
+```text
+RDD
+ │
+ ▼
+map()
+ │
+ ▼
+filter()
+ │
+ ▼
+groupBy()
+ │
+ ▼
+Action (collect / count / ...)
+ │
+ ▼
+Exécution du DAG sur le cluster
+```
+
+Cette évaluation paresseuse permet à Spark d'optimiser globalement l'enchaînement des transformations (par exemple en combinant plusieurs `map` consécutifs) avant de lancer le moindre calcul sur le cluster.
+
+### 1.7 Partitionnement
+
+Un RDD (ou un DataFrame) n'est pas un bloc unique : il est découpé en **partitions**, chacune traitée indépendamment par un Executor — c'est ce découpage qui rend le parallélisme possible.
+
+```text
+Dataset
+   │
+   ├── Partition 1
+   ├── Partition 2
+   ├── Partition 3
+   └── Partition 4
+```
+
+```python
+rdd.getNumPartitions()      # nombre de partitions actuel
+rdd.repartition(4)          # redécouper le RDD en 4 partitions
+```
+
+Le nombre de partitions influence directement le degré de parallélisme : trop peu de partitions sous-utilisent le cluster (des Executors restent inactifs), tandis qu'un nombre excessif multiplie inutilement les tâches et leur coût de gestion.
+
+### 1.8 Cache
+
+Par défaut, un RDD (ou DataFrame) est recalculé depuis sa source à **chaque** action qui le concerne — cohérent avec l'évaluation paresseuse, mais coûteux si le même RDD est réutilisé plusieurs fois. `.cache()` indique à Spark de conserver le résultat en mémoire après son premier calcul :
+
+```python
+parsed_cached = parsed.cache()
+
+parsed_cached.count()   # premier appel : calcule et met en cache
+parsed_cached.count()   # second appel : beaucoup plus rapide, lu depuis le cache
+```
+
+*Exercice* : chronométrer (`%time` dans le shell, ou en encadrant l'appel d'un `time.time()`) deux exécutions successives de la même action sur un RDD, avec puis sans `.cache()`, et comparer.
+
+### 1.9 Commandes et API à connaître
 
 **Lancement (ligne de commande) :**
 
@@ -104,7 +197,8 @@ Dans cet atelier, les deux API sont mises en œuvre sur le **même jeu de donné
 | `.collect()` | Rapatrier tous les résultats vers le driver (⚠️ à éviter sur un très gros RDD non agrégé) |
 | `.take(n)` | Rapatrier seulement les `n` premiers éléments — alternative sûre à `.collect()` |
 | `.count()` | Compter les éléments du RDD |
-| `.cache()` | Garder le RDD en mémoire entre plusieurs actions, pour éviter de relire/reparser les données à chaque fois |
+| `.getNumPartitions()` / `.repartition(n)` | Consulter / modifier le nombre de partitions (§1.7) |
+| `.cache()` | Garder le RDD en mémoire entre plusieurs actions (§1.8) |
 
 **API DataFrame (haut niveau, proche SQL) :**
 
@@ -118,8 +212,6 @@ Dans cet atelier, les deux API sont mises en œuvre sur le **même jeu de donné
 | `.orderBy(col("colonne").desc())` | Trier (`.desc()` pour un tri décroissant) |
 | `.withColumn("nouvelle_colonne", expression)` | Ajouter une colonne calculée (ex. `substring`, `when(...).otherwise(...)`) |
 | `.filter(condition)` / `.where(condition)` | Filtrer les lignes |
-
-**Point clé à retenir** : `.collect()` et `.take(n)` sont les seules opérations qui rapatrient réellement des données vers le driver — toutes les autres (`.map`, `.filter`, `.groupBy`, `.agg`...) ne font que décrire des transformations, évaluées **paresseusement** (*lazy evaluation*) et exécutées uniquement au moment où une action (`.collect()`, `.count()`, `.show()`...) est appelée.
 
 ---
 
@@ -136,15 +228,9 @@ Fichier texte, valeurs séparées par des **tabulations**, sans ligne d'en-tête
 | 4 | `cost` | flottant | 16.98 |
 | 5 | `payment` | chaîne | Cash / Visa / MasterCard / Amex / Discover |
 
-Le fichier doit être accessible depuis le conteneur Spark avant de démarrer l'atelier :
+Le fichier a déjà été déposé sur HDFS à l'Atelier 4.1 (`/data/raw/purchases.txt`). En environnement local (plateforme Docker de l'Atelier 3, sans HDFS), il peut aussi être placé dans un dossier monté en volume (par exemple `./data:/data`), accessible via `/data/purchases.txt`.
 
-- **En local (plateforme Docker de l'Atelier 3)** : placer `purchases.txt` dans un dossier monté en volume (par exemple `./data:/data` ajouté au service `spark-master` du `docker-compose.yml`), puis y accéder via `/data/purchases.txt`.
-- **Sur Amazon EMR (Atelier 7)** : déposer le fichier sur HDFS :
-  ```bash
-  hdfs dfs -put purchases.txt /user/hadoop/purchases.txt
-  ```
-
-Dans les exemples de code ci-dessous, le chemin `"purchases.txt"` est à adapter selon l'environnement (`/data/purchases.txt` en local, ou chemin HDFS/S3 sur EMR).
+Dans les exemples de code ci-dessous, le chemin `"purchases.txt"` est à adapter selon l'environnement (`/data/raw/purchases.txt` sur HDFS, `/data/purchases.txt` en local Docker).
 
 ---
 
@@ -164,8 +250,9 @@ purchases = sc.textFile("purchases.txt")
 def parse_line(line):
     return line.split("\t")   # [pdate, ptime, store, product, cost, payment]
 
-parsed = purchases.map(parse_line)
+parsed = purchases.map(parse_line).cache()   # mis en cache : réutilisé sur les 4 questions suivantes
 parsed.first()
+parsed.getNumPartitions()
 ```
 
 ### 3.2 Question 1 — Montant total des ventes par magasin, trié par meilleures ventes
@@ -271,25 +358,60 @@ df.withColumn("categorie", when(col("payment") == "Cash", "cash").otherwise("ele
   .show()
 ```
 
-### Consignes
+---
 
-1. Exécuter les questions 1 à 4 en RDD (Partie A), puis en DataFrame (Partie B).
-2. Comparer la longueur et la lisibilité du code entre les deux approches.
-3. Comparer le temps d'exécution (`%time` dans le shell, ou l'onglet *Jobs* de l'interface Spark) entre RDD et DataFrame sur la même question.
-4. Noter les résultats de la question 1 (top 3 magasins) — ils serviront de référence de comparaison à l'Atelier 5 (Hive et Spark SQL).
+## 5. Observer l'exécution avec Spark UI
+
+Chaque application Spark active expose une interface web de suivi, généralement sur `localhost:4040` (le port s'incrémente à 4041, 4042... si plusieurs applications tournent en parallèle).
+
+Après avoir exécuté au moins une action (par exemple la question 1 en DataFrame), ouvrir `http://localhost:4040` et identifier :
+
+- les **Jobs** : un job est déclenché par chaque action (`.collect()`, `.show()`, `.count()`...) ;
+- les **Stages** : chaque job est découpé en étapes, séparées par les opérations nécessitant un échange de données entre partitions (typiquement un `groupBy`) ;
+- les **Tasks** : chaque stage est découpé en tâches, une par partition traitée ;
+- le **DAG** (onglet *DAG Visualization* d'un job) : la représentation graphique du plan d'exécution évoqué au §1.6 ;
+- les **Executors** (onglet *Executors*) : la liste des executors actifs, leur mémoire utilisée et le nombre de tâches exécutées par chacun.
+
+*Exercice* : relancer la question 1 en RDD puis en DataFrame, et comparer le nombre de stages et de tasks générés par chacune dans Spark UI.
 
 ---
 
-## 5. Synthèse
+## 6. Consignes
 
-- Spark distribue données et calculs sur un cluster (Driver + Executors), en prolongeant la logique du MapReduce historique tout en travaillant autant que possible en mémoire.
+1. Exécuter les questions 1 à 4 en RDD (Partie A), puis en DataFrame (Partie B).
+2. Comparer la longueur et la lisibilité du code entre les deux approches.
+3. Comparer le temps d'exécution (`%time` dans le shell, ou l'onglet *Jobs* de Spark UI) entre RDD et DataFrame sur la même question.
+4. Réaliser l'exercice de partitionnement (§1.7) et de cache (§1.8).
+5. Noter les résultats de la question 1 (top 3 magasins) et les comparer à ceux obtenus en HiveQL à l'Atelier 5.1 — ils doivent être strictement identiques.
+6. Explorer Spark UI (§5) sur au moins une des questions traitées.
+
+---
+
+## 7. Synthèse
+
+- Spark distribue données et calculs sur un cluster (Driver + Executors), en prolongeant la logique du MapReduce historique tout en travaillant autant que possible en mémoire ; sur un cluster Hadoop, ce rôle de Cluster Manager est tenu par YARN, déjà vu à l'Atelier 4.1.
+- Toute opération Spark est soit une transformation (paresseuse, ne calcule rien immédiatement), soit une action (déclenche l'exécution du DAG) — c'est ce mécanisme d'évaluation paresseuse qui permet à Spark d'optimiser globalement un enchaînement de transformations.
 - Le RDD est la structure bas niveau, proche du modèle Map/Reduce (clé-valeur, `reduceByKey`) ; le DataFrame, optimisé automatiquement par Catalyst, est la structure recommandée pour la pratique courante.
-- Sur les quatre mêmes questions métier appliquées à `purchases.txt`, l'API DataFrame produit un code sensiblement plus court et plus lisible que l'API RDD, pour un résultat identique.
-- Ces mêmes traitements seront repris en syntaxe SQL pure à l'Atelier 5 (Spark SQL), puis comparés à leur équivalent Hive, avant d'être exécutés à grande échelle sur Amazon EMR à l'Atelier 7.
+- Le partitionnement détermine le degré de parallélisme réel d'un traitement ; le cache évite de recalculer un même RDD/DataFrame réutilisé plusieurs fois.
+- Sur les quatre mêmes questions métier appliquées à `purchases.txt`, l'API DataFrame produit un code sensiblement plus court et plus lisible que l'API RDD, pour un résultat identique — et strictement identique à celui obtenu en HiveQL à l'Atelier 5.1.
+- Ces mêmes traitements seront repris en syntaxe SQL pure à l'Atelier 5.2 (Spark SQL), après un détour approfondi par Hive à l'Atelier 5.1, avant d'être exécutés à grande échelle sur Amazon EMR à l'Atelier 7.
+
+### Tableau de synthèse — l'écosystème Hadoop/Spark du chapitre 4
+
+| Technologie | Rôle principal | Interface | Exécution |
+|---|---|---|---|
+| **HDFS** (Atelier 4.1) | Stockage distribué | Commandes `hdfs dfs` | DataNodes |
+| **Hive** (Atelier 5.1) | Requêtes SQL distribuées | SQL (HiveQL) | Tez / Spark, sur YARN |
+| **Spark RDD** (cet atelier) | Traitement distribué bas niveau | API RDD | Executors |
+| **Spark DataFrame** (cet atelier) | Traitement distribué optimisé | API DataFrame / SQL | Catalyst + YARN |
+| **YARN** (Atelier 4.1) | Gestion des ressources | Transparent pour l'utilisateur | ResourceManager + NodeManagers |
+
+Cette table résume la progression du chapitre : du **stockage distribué** (HDFS) vers **l'orchestration des ressources** (YARN), puis vers les **moteurs de calcul** (Hive et Spark) — chacun exploitant les deux premiers sans les dupliquer.
 
 ---
 
 ## Pour aller plus loin
 
-- Explorer l'interface web Spark (`http://localhost:8080` puis l'UI du job sur le port 4040) pour visualiser le plan d'exécution (DAG) et comparer visuellement les jobs RDD et DataFrame.
+- Explorer l'interface web Spark (`http://localhost:8080` pour le cluster Standalone de l'Atelier 3, `http://localhost:4040` pour une application) pour visualiser le plan d'exécution (DAG) et comparer visuellement les jobs RDD et DataFrame.
 - Écrire la question 1 avec `sortByKey()` après avoir inversé clé et valeur, pour observer une autre façon de trier un RDD.
+- Mesurer l'effet de `.repartition()` sur le temps d'exécution d'une agrégation, en augmentant puis en réduisant fortement le nombre de partitions.

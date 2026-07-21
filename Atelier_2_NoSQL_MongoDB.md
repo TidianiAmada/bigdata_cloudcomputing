@@ -19,7 +19,8 @@ Les limites des systèmes relationnels mises en évidence dans l'atelier précé
 - expliquer les principes fondamentaux des bases de données NoSQL et en quoi elles répondent aux limites vues à l'Atelier 1 ;
 - distinguer les principales familles de modèles NoSQL et leurs domaines d'application ;
 - mettre en œuvre une base MongoDB dans un environnement conteneurisé (Docker) ;
-- interroger une base MongoDB à l'aide des opérations de filtrage, de projection et d'agrégation sur un jeu de données JSON réel.
+- interroger une base MongoDB à l'aide des opérations de filtrage, de projection, de tri et d'agrégation sur un jeu de données JSON réel ;
+- mettre en œuvre l'ensemble des opérations CRUD (`insertOne`/`insertMany`, `find`/`findOne`, `updateOne`/`updateMany`/`replaceOne`, `deleteOne`/`deleteMany`) sur cette même base.
 
 ---
 
@@ -72,6 +73,56 @@ Les bases NoSQL font des choix de compromis différents selon leur conception (s
 
 Aucun de ces modèles n'est supérieur aux autres de manière absolue. Chacun répond à une catégorie particulière de problèmes.
 
+**Base clé-valeur** (ex. Redis, DynamoDB) — une table à deux colonnes, sans structure interne visible pour le moteur :
+
+```text
+   Key              Value
+   ──────────────────────────────────────
+   user:1001    →   { name: "Awa", age: 25 }
+   user:1002    →   { name: "Omar", age: 31 }
+   session:52   →   { token: "a1b2c3", ttl: 3600 }
+```
+
+**Base orientée documents** (ex. MongoDB, CouchDB) — une collection regroupe des documents indépendants, chacun pouvant avoir ses propres champs :
+
+```text
+Collection : students
+   │
+   ├── Document
+   │      ├── name: "Awa"
+   │      ├── age: 21
+   │      └── city: "Dakar"
+   │
+   ├── Document
+   │      ├── name: "Omar"
+   │      ├── age: 23
+   │      └── city: "Thiès"
+   │
+   └── ...
+```
+
+**Base orientée colonnes** (ex. Cassandra, HBase) — une ligne (`RowKey`) regroupe des **familles de colonnes**, chacune contenant plusieurs colonnes :
+
+```text
+RowKey : Student001
+   │
+   ├── Famille de colonnes : Personal
+   │       ├── Name  = "Awa Ndiaye"
+   │       └── Age   = 21
+   │
+   └── Famille de colonnes : Grades
+           ├── Math    = 15
+           └── Physics = 13
+```
+
+**Base orientée graphes** (ex. Neo4j) — des **nœuds** (entités) reliés par des **relations** typées et orientées :
+
+```text
+  (Alice) ──FRIEND──► (Bob) ──WORKS_AT──► (OpenAI)
+
+   ( )  nœud (entité)          ──►  relation (arête orientée, typée)
+```
+
 ### 1.5 Choix de MongoDB comme support pédagogique
 
 MongoDB est une base orientée **documents** : chaque enregistrement est un document au format BSON (proche de JSON), regroupé dans des **collections** (équivalent souple d'une table). Elle est représentative des bases NoSQL les plus utilisées en entreprise et illustre bien :
@@ -83,6 +134,39 @@ MongoDB est une base orientée **documents** : chaque enregistrement est un docu
 > **Remarque**
 >
 > L'absence de schéma ne signifie pas l'absence de structure. Dans les applications réelles, les documents MongoDB suivent généralement un modèle de données défini par les développeurs.
+
+**Hiérarchie d'une base MongoDB.** Un même serveur (`mongod`) héberge plusieurs bases, chacune organisée en collections, elles-mêmes composées de documents, eux-mêmes composés de champs :
+
+```text
+MongoDB Server (mongod)
+   │
+   └── Database : geodb
+          │
+          └── Collection : countries
+                 │
+                 ├── Document (_id: ObjectId("..."))
+                 │      ├── Field : name
+                 │      ├── Field : capital
+                 │      ├── Field : region
+                 │      └── Field : currencies [ ... ]
+                 │
+                 ├── Document (_id: ObjectId("..."))
+                 │      └── ...
+                 │
+                 └── ...
+```
+
+Concrètement, une `Database` n'est qu'un espace de noms regroupant des documents JSON tels que celui-ci :
+
+```text
+Database : university
+   │
+   └── Collection : students
+          │
+          ├── { "name": "Awa", "age": 21, "city": "Dakar" }
+          ├── { "name": "Omar", "age": 23, "city": "Thiès" }
+          └── ...
+```
 
 Correspondance de vocabulaire SQL ↔ MongoDB :
 
@@ -113,7 +197,25 @@ Le choix entre ces deux approches dépend principalement :
 
 Dans le jeu de données `countries.json` utilisé dans cet atelier, les devises et langues sont imbriquées car elles sont peu nombreuses, rarement modifiées et systématiquement lues avec le pays.
 
-### 1.8 Référence rapide des commandes MongoDB
+### 1.8 Les opérations CRUD et la structure MongoDB
+
+Quatre familles d'opérations suffisent à manipuler entièrement une collection. Elles s'appliquent toujours au même niveau — le **document** — au sein d'une collection :
+
+```text
+Collection : countries
+        │
+        ├── CREATE  →  insertOne() / insertMany()
+        │
+        ├── READ    →  find() / findOne()
+        │
+        ├── UPDATE  →  updateOne() / updateMany() / replaceOne()
+        │
+        └── DELETE  →  deleteOne() / deleteMany()
+```
+
+L'atelier pratique (partie 3) met en œuvre systématiquement les quatre familles, dans cet ordre : lecture (§3.1 à 3.10, déjà couvertes), puis création, mise à jour et suppression (§3.11 et suivants).
+
+### 1.9 Référence rapide des commandes MongoDB
 
 Les commandes suivantes constituent un socle minimal pour la manipulation de MongoDB, de la mise en route du serveur jusqu'à l'interrogation des données, dans `mongosh`.
 
@@ -141,6 +243,8 @@ Les commandes suivantes constituent un socle minimal pour la manipulation de Mon
 | `db.coll.distinct("champ", <filtre>)` | Lister les valeurs uniques d'un champ |
 | `db.coll.findOne(<filtre>, <projection>)` | Récupérer un seul document |
 | `db.coll.find(<filtre>, <projection>)` | Récupérer plusieurs documents |
+| `.sort({champ: 1 \| -1})` | Trier le résultat d'un `find()` (chaîné après l'appel) |
+| `.limit(n)` | Limiter le résultat aux `n` premiers documents (chaîné après `sort`/`find`) |
 
 Opérateurs de filtre courants : `$eq` (implicite), `$lt` / `$lte` / `$gt` / `$gte` (comparaison), `$in` (appartenance à une liste), et la notation pointée (`"currencies.name"`) pour filtrer sur un champ imbriqué dans un tableau.
 
@@ -153,11 +257,34 @@ Opérateurs de filtre courants : `$eq` (implicite), `$lt` / `$lte` / `$gt` / `$g
 | `$sum` / `$avg` / `$min` / `$max` | Fonctions d'agrégat utilisées dans `$group` | `SUM`/`AVG`/`MIN`/`MAX` |
 | `$sort` | Trier les résultats (`1` croissant, `-1` décroissant) | `ORDER BY` |
 
-**Écriture (pour aller plus loin) :**
+**Création :**
 
 | Commande | Rôle |
 |---|---|
-| `db.coll.insertOne(<document>)` | Insérer un document |
+| `db.coll.insertOne(<document>)` | Insérer un seul document |
+| `db.coll.insertMany([<doc1>, <doc2>, ...])` | Insérer plusieurs documents en une seule opération |
+
+**Mise à jour :**
+
+| Commande | Rôle |
+|---|---|
+| `db.coll.updateOne(<filtre>, <opérateurs>)` | Modifier le premier document correspondant au filtre |
+| `db.coll.updateMany(<filtre>, <opérateurs>)` | Modifier tous les documents correspondant au filtre |
+| `db.coll.replaceOne(<filtre>, <nouveauDocument>)` | Remplacer intégralement un document (hors `_id`) |
+
+Opérateurs de mise à jour courants : `$set` (fixer la valeur d'un champ), `$inc` (incrémenter/décrémenter un nombre), `$push` (ajouter un élément à un tableau), `$unset` (supprimer un champ). **Piège fréquent** : `updateOne`/`updateMany` attendent un opérateur (`$set`, …) en second argument — un document brut sans opérateur est interprété comme un remplacement total et provoque une erreur si des champs comme `_id` sont concernés.
+
+**Suppression :**
+
+| Commande | Rôle |
+|---|---|
+| `db.coll.deleteOne(<filtre>)` | Supprimer le premier document correspondant au filtre |
+| `db.coll.deleteMany(<filtre>)` | Supprimer tous les documents correspondant au filtre |
+
+**Autres :**
+
+| Commande | Rôle |
+|---|---|
 | `db.coll.createIndex({champ: 1})` | Créer un index pour accélérer les requêtes sur ce champ |
 
 ---
@@ -233,7 +360,9 @@ db.countries.countDocuments()
 ## 3. Atelier pratique (60–75 min)
 
 ### Objectif
-Exprimer, en MongoDB, dix requêtes de complexité croissante (liste de valeurs distinctes, filtrage, projection, agrégation) sur le jeu de données `countries`.
+Exprimer, en MongoDB, dix requêtes de complexité croissante (liste de valeurs distinctes, filtrage, projection, agrégation) sur le jeu de données `countries`, puis compléter la maîtrise du CRUD avec des opérations de création, mise à jour et suppression (§3.11 à 3.17).
+
+> **Convention de sécurité** : tous les documents créés dans les exercices suivants portent un champ `test: true`, ce qui permet de les supprimer proprement en fin d'atelier (§3.17) sans risquer de toucher aux 250 documents originaux de `countries.json`.
 
 Toutes les commandes ci-dessous s'exécutent dans `mongosh` (ou dans Robo3T/MongoDB Compass), connecté à la base `geodb`.
 
@@ -350,10 +479,119 @@ GROUP BY region
 ORDER BY totalPopulation DESC;
 ```
 
+### 3.11 (READ complémentaire) Les 5 pays les plus peuplés au monde
+
+Introduction de `sort()` et `limit()`, chaînés après `find()` :
+
+```javascript
+db.countries.find(
+  {},
+  { name: 1, population: 1, _id: 0 }
+).sort({ population: -1 }).limit(5)
+```
+
+### 3.12 (CREATE) Ajouter un pays avec `insertOne()`
+
+```javascript
+db.countries.insertOne({
+  name: "Wakanda",
+  capital: "Birnin Zana",
+  region: "Africa",
+  subregion: "Eastern Africa",
+  population: 6000000,
+  currencies: [{ code: "WKD", name: "Wakandan Dollar", symbol: "W" }],
+  languages: [{ iso639_1: "xh", name: "Xhosa", nativeName: "isiXhosa" }],
+  test: true
+})
+```
+
+*Exercice* : vérifier l'insertion avec `db.countries.findOne({ name: "Wakanda" })`, puis relancer la requête 3.6 (`countDocuments({ region: "Africa" })`) — le compte doit avoir augmenté de 1.
+
+### 3.13 (CREATE) Ajouter plusieurs pays avec `insertMany()`
+
+```javascript
+db.countries.insertMany([
+  { name: "Genovia", region: "Europe", population: 2000000, test: true },
+  { name: "Latveria", region: "Europe", population: 1500000, test: true }
+])
+```
+
+*Exercice* : compter combien de documents `test: true` existent désormais dans la collection (`db.countries.countDocuments({ test: true })`).
+
+### 3.14 (UPDATE) Modifier un champ avec `$set` et `$inc`
+
+```javascript
+// $set : fixer la valeur d'un champ
+db.countries.updateOne(
+  { name: "Wakanda" },
+  { $set: { capital: "Birnin Zana (capitale mise à jour)" } }
+)
+
+// $inc : incrémenter un champ numérique existant
+db.countries.updateOne(
+  { name: "Wakanda" },
+  { $inc: { population: 50000 } }
+)
+```
+
+*Exercice* : vérifier avec `findOne()` que la capitale a changé et que la population est passée de 6 000 000 à 6 050 000.
+
+### 3.15 (UPDATE) Modifier un tableau avec `$push`, retirer un champ avec `$unset`
+
+```javascript
+// $push : ajouter un élément à un tableau existant
+db.countries.updateOne(
+  { name: "Wakanda" },
+  { $push: { languages: { iso639_1: "en", name: "English" } } }
+)
+
+// $unset : supprimer un champ
+db.countries.updateOne(
+  { name: "Wakanda" },
+  { $unset: { subregion: "" } }
+)
+```
+
+*Exercice* : vérifier avec `findOne({ name: "Wakanda" })` que `languages` contient désormais deux éléments et que `subregion` a disparu du document.
+
+### 3.16 (UPDATE) Mettre à jour plusieurs documents avec `updateMany()` et remplacer un document avec `replaceOne()`
+
+```javascript
+// updateMany : appliquer la même modification à tous les documents d'un filtre
+db.countries.updateMany(
+  { test: true },
+  { $set: { flagged: true } }
+)
+
+// replaceOne : remplacer intégralement un document (tous les champs sauf _id)
+db.countries.replaceOne(
+  { name: "Wakanda" },
+  { name: "Wakanda", region: "Africa", population: 6050000, test: true }
+)
+```
+
+*Exercice* : après le `replaceOne`, vérifier que `capital`, `currencies` et `languages` ont bien disparu du document « Wakanda » — c'est la différence essentielle entre `replaceOne` (remplacement total) et `updateOne` (modification ciblée).
+
+> **Point de vigilance** : `updateMany()` s'applique à **tous** les documents correspondant au filtre. Il est recommandé de toujours valider le filtre avec un `find()` avant d'exécuter une modification de masse.
+
+### 3.17 (DELETE) Supprimer un document, puis nettoyer tous les documents de test
+
+```javascript
+// deleteOne : supprimer le premier document correspondant au filtre
+db.countries.deleteOne({ name: "Genovia" })
+
+// deleteMany : supprimer tous les documents marqués comme documents de test
+db.countries.deleteMany({ test: true })
+```
+
+*Exercice* : relancer `db.countries.countDocuments()` — le résultat doit être revenu exactement à 250, confirmant que tous les documents ajoutés durant l'atelier ont été supprimés sans affecter les données originales.
+
 ### Consignes
 
+**Partie READ (§3.1 à 3.11) :**
+
 1. Importer `countries.json` dans `geodb.countries` et vérifier le nombre de documents (250).
-2. Exécuter les dix requêtes ci-dessus et noter les résultats.
+2. Exécuter les onze requêtes de lecture ci-dessus et noter les résultats.
 3. Pour la requête 3.5, identifier dans les résultats quels pays utilisent chaque variante du Franc CFA (Ouest vs Centre Africain).
 4. Modifier la requête 3.8 pour l'appliquer à une autre région (par exemple « Europe ») et comparer les résultats.
 5. **Requête libre** : proposer, en groupe, une nouvelle requête répondant à une question métier de votre choix, par exemple :
@@ -362,6 +600,12 @@ ORDER BY totalPopulation DESC;
    - Quelle région possède le plus grand nombre de pays ?
    - Quels pays possèdent plusieurs langues officielles ?
 
+**Partie CREATE / UPDATE / DELETE (§3.12 à 3.17) :**
+
+6. Exécuter dans l'ordre les opérations 3.12 à 3.17 : insertion (`insertOne`, `insertMany`), mise à jour (`updateOne` avec `$set`/`$inc`/`$push`/`$unset`, `updateMany`, `replaceOne`) puis suppression (`deleteOne`, `deleteMany`).
+7. Après chaque opération d'écriture, vérifier son effet avec un `find()` ou `findOne()` ciblé avant de passer à la suivante.
+8. Confirmer, en fin d'atelier, que `db.countries.countDocuments()` est revenu exactement à 250.
+
 ---
 
 ## Erreurs fréquentes
@@ -369,15 +613,18 @@ ORDER BY totalPopulation DESC;
 - oublier `_id: 0` dans la projection, qui fait alors apparaître l'identifiant généré automatiquement ;
 - confondre `find()` (plusieurs documents) et `findOne()` (un seul document) ;
 - oublier que `aggregate()` attend un tableau d'étages (`[ ... ]`), même s'il n'y en a qu'un seul ;
-- utiliser `$sum` (ou un autre opérateur d'agrégat) en dehors d'un `$group`.
+- utiliser `$sum` (ou un autre opérateur d'agrégat) en dehors d'un `$group` ;
+- appeler `updateOne()`/`updateMany()` avec un document brut au lieu d'un opérateur (`$set`, `$inc`…), ce qui provoque une erreur ou un remplacement non voulu ;
+- confondre `updateOne()` (modification ciblée, les autres champs sont conservés) et `replaceOne()` (remplacement intégral du document) ;
+- exécuter un `deleteMany()` avec un filtre trop large (ou vide, `{}`, qui viderait toute la collection) sans l'avoir d'abord validé avec `find()`.
 
 ---
 
 ## 4. Synthèse
 
-- NoSQL n'est pas un substitut universel au SQL mais une famille de réponses adaptées à des besoins spécifiques (flexibilité de schéma, scalabilité horizontale, disponibilité).
-- MongoDB (modèle documents) permet de stocker des données semi-structurées, y compris des structures imbriquées (tableaux d'objets comme `currencies` ou `languages`), sans schéma rigide ni jointure.
-- `distinct`, `find` (avec filtre et projection) et `aggregate` (`$match`, `$group`, `$sum`, `$sort`) couvrent l'essentiel des besoins d'interrogation courants, du simple filtrage jusqu'à l'agrégation par groupe.
+- NoSQL n'est pas un substitut universel au SQL mais une famille de réponses adaptées à des besoins spécifiques (flexibilité de schéma, scalabilité horizontale, disponibilité), déclinée en quatre familles (clé-valeur, documents, colonnes, graphes).
+- MongoDB (modèle documents) organise les données selon une hiérarchie simple (serveur → base → collections → documents → champs) et permet de stocker des structures imbriquées (tableaux d'objets comme `currencies` ou `languages`), sans schéma rigide ni jointure.
+- Les quatre opérations CRUD couvrent l'intégralité des besoins de manipulation d'une collection : `insertOne`/`insertMany` (Create), `find`/`findOne` avec filtre, projection, tri et limite (Read), `updateOne`/`updateMany`/`replaceOne` avec `$set`/`$inc`/`$push`/`$unset` (Update), `deleteOne`/`deleteMany` (Delete) — complétées par `aggregate` (`$match`, `$group`, `$sum`, `$sort`) pour les besoins d'analyse.
 - Le théorème CAP explique pourquoi les bases distribuées doivent arbitrer entre cohérence stricte et disponibilité.
 - Le lancement de MongoDB via Docker préfigure l'approche utilisée pour l'ensemble des composants du module (Atelier 3).
 
@@ -402,7 +649,10 @@ MongoDB
 Documents BSON (embedding / referencing)
       │
       ▼
-find() · distinct() · aggregate()
+CRUD : insertOne/insertMany · find/findOne/sort/limit · updateOne/updateMany/replaceOne · deleteOne/deleteMany
+      │
+      ▼
+aggregate() : $match · $group · $sum · $sort
 ```
 
 ---
