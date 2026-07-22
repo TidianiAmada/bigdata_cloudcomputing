@@ -670,6 +670,23 @@ WHERE store = 'Tampa';
 
 Ce tableau prépare directement l'Atelier 5.2 : les mêmes questions métier posées sur `purchases.txt` (ventes par magasin, par tranche horaire, par mode de paiement, taux cash/électronique) y seront reformulées en Spark SQL, sur le même Metastore.
 
+### Complément théorique — l'architecture Spark en bref
+
+Avant de retrouver Spark SQL en détail à l'Atelier 5.2, un bref rappel de l'architecture interne de Spark permet de comprendre *pourquoi* certaines de ses règles existent — un parallèle direct peut être fait avec des notions déjà connues en programmation orientée objet.
+
+**Driver program et RDD.** Toute application Spark repose sur un **driver program**, qui exécute la fonction `main` de l'utilisateur et pilote des opérations parallèles sur un cluster (même rôle d'orchestrateur que le Driver Hive de la Partie II, mais pour Spark). L'abstraction centrale que manipule ce driver est le **RDD (*Resilient Distributed Dataset*)** : une collection d'éléments partitionnée entre les nœuds du cluster, sur laquelle on peut opérer en parallèle. Un RDD se crée soit à partir d'un fichier HDFS (ou tout système de fichiers supporté par Hadoop — c'est exactement `purchases.txt`, manipulé aux Ateliers 4.1/4.2), soit à partir d'une collection existante côté driver, puis se **transforme** (`map`, `filter`, `reduceByKey`...). Spark permet aussi de **persister** un RDD en mémoire (`.cache()`, déjà vu à l'Atelier 4.2) pour le réutiliser efficacement d'une opération à l'autre, et **récupère automatiquement** d'une panne de nœud grâce à la lignée (*lineage*) des transformations, qui permet de recalculer uniquement la partition perdue plutôt que de tout refaire.
+
+**Variables partagées.** Par défaut, quand Spark exécute une fonction en parallèle sous forme de tâches sur différents nœuds, il envoie **une copie indépendante** de chaque variable utilisée à chaque tâche — comme un attribut d'instance dupliqué dans chaque objet, sans aucun état commun. Mais parfois, une variable doit au contraire être **partagée** entre les tâches, ou entre les tâches et le driver. Spark propose alors deux mécanismes dédiés, chacun avec un équivalent direct en POO :
+
+| Mécanisme Spark | Rôle | Équivalent conceptuel en POO |
+|---|---|---|
+| **Broadcast variable** | Met en cache une valeur en mémoire sur **tous** les nœuds, une seule fois, plutôt que de la réenvoyer à chaque tâche | Une **variable statique** (`static`) de classe : une seule copie partagée par toutes les instances, plutôt qu'un attribut dupliqué dans chaque objet |
+| **Accumulator** | Variable sur laquelle on ne peut qu'« ajouter » (compteurs, sommes), agrégée depuis toutes les tâches vers le driver | Un **compteur synchronisé** (`synchronized` en Java, verrou/mutex en général) : plusieurs threads incrémentent une même variable partagée sans se marcher dessus, l'écriture concurrente étant gérée par le framework plutôt que par le développeur |
+
+**Pourquoi cette distinction compte.** Un attribut d'instance classique, dupliqué dans chaque objet, correspond au comportement par défaut de Spark (une copie par tâche) : chaque tâche modifie sa propre copie sans jamais affecter les autres. Une variable `static`, elle, est un état **unique et partagé** — c'est le rôle d'une **broadcast variable** : diffuser une seule fois une donnée volumineuse (une table de correspondance, un modèle entraîné...) que toutes les tâches liront sans la retélécharger à chaque fois. Un compteur `synchronized`, lui, est un état partagé en **écriture** contrôlée — c'est le rôle d'un **accumulator** : additionner en toute sécurité des valeurs produites par des centaines de tâches concurrentes, sans que le développeur n'ait à gérer lui-même la synchronisation (verrous, sections critiques) que ce type de partage exigerait en programmation concurrente classique.
+
+*Exercice de réflexion* : dans le programme RDD de l'Atelier 4.2 (Question 4 — taux de paiement cash/électronique), la variable `total` est calculée une fois par le driver (`parsed.count()`) puis réutilisée dans une transformation exécutée sur chaque tâche. S'agit-il d'une variable partagée au sens de Spark (broadcast/accumulator), ou d'une simple valeur capturée par fermeture (*closure*) et copiée à chaque tâche ? Justifier, puis identifier un cas, parmi les traitements déjà écrits (Ateliers 4.2/5.2), où l'utilisation explicite d'une broadcast variable ou d'un accumulator apporterait un gain réel par rapport au code actuel.
+
 ---
 
 ## Pour aller plus loin
@@ -677,9 +694,11 @@ Ce tableau prépare directement l'Atelier 5.2 : les mêmes questions métier pos
 - Comparer le temps d'exécution d'une même agrégation entre le format `TEXTFILE` et le format `ORC` sur `purchases_bucketed`.
 - Explorer `EXPLAIN FORMATTED` pour visualiser le plan d'exécution complet (y compris le choix du CBO) d'une requête avec jointure.
 - Étudier les vues matérialisées Hive (*materialized views*) comme mécanisme d'accélération complémentaire au partitioning/bucketing.
+- Lire la section « Shared Variables » du *RDD Programming Guide* officiel de Spark, et repérer dans le code déjà écrit à l'Atelier 4.2 un endroit où une broadcast variable remplacerait avantageusement une donnée recalculée ou retransmise à chaque tâche.
 
 ### Bibliographie
 
 - Capriolo, E., Wampler, D., & Rutherglen, J. (2012). *Programming Hive*. O'Reilly.
 - Apache Hive. *Hive Language Manual*. https://cwiki.apache.org/confluence/display/Hive/LanguageManual
 - White, T. (2021). *Hadoop: The Definitive Guide*. O'Reilly.
+- Apache Spark. *RDD Programming Guide*. https://spark.apache.org/docs/latest/rdd-programming-guide.html
